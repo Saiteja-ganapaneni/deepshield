@@ -1,6 +1,6 @@
 # Core ML
 torch==2.9.0
-torchvision==0.20.0
+torchvision==0.24.0
 timm==0.9.12
 
 # TensorFlow + Keras (RetinaFace)
