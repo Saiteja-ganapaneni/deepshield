@@ -1,32 +1,12 @@
-# Core ML
-torch==2.9.0
-torchvision==0.24.0
+streamlit==1.45.1
+torch==2.2.2
+torchvision==0.17.2
 timm==0.9.12
-
-# TensorFlow + Keras (RetinaFace)
-tensorflow==2.15.0
-keras==2.15.0
-
-# Face detection
-retina-face==0.0.14
-
-# Core deps (IMPORTANT FIX HERE)
-numpy==1.24.3
-
-# Image / video
 opencv-python-headless==4.9.0.80
-Pillow==10.2.0
-
-# Web
-streamlit==1.32.0
-
-# Visualization
-matplotlib==3.7.5
-seaborn==0.12.2
-
-# Data
-pandas==1.5.3
-scikit-learn==1.3.2
-
-# Utils
-tqdm==4.66.2
+matplotlib==3.8.4
+pillow==10.3.0
+reportlab==4.1.0
+numpy==1.26.4
+tensorflow-cpu==2.15.0
+retina-face==0.0.14
+tf-keras==2.15.0
