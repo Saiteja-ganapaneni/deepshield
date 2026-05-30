@@ -764,55 +764,52 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Lazy state — nothing loads at startup ────────────────────────
-rf_module    = None
-rf_ready     = False
-model        = None
-device       = None
-model_loaded = False
-
+# ── Lazy loaders — @st.cache_resource handles persistence across reruns ──
 def ensure_model_loaded():
-    """Load model on first use (cached after that). Returns (model, device, ok)."""
-    global model, device, model_loaded
-    if model_loaded:
-        return model, device, True
+    """Returns (model, device, ok). Uses st.cache_resource internally."""
     if not os.path.exists(model_path):
-        st.error("⚠ Model file not found — check the path in the sidebar.")
+        st.error(f"⚠ Model file not found at '{model_path}' — check the path in the sidebar.")
         return None, None, False
     try:
-        model, device = load_model(model_path)
-        model_loaded  = True
-        return model, device, True
+        m, d = load_model(model_path)
+        return m, d, True
     except Exception as e:
         st.error(f"Failed to load model: {e}")
         return None, None, False
 
 def ensure_rf_loaded():
-    """Try to load RetinaFace on first use. Silent if unavailable."""
-    global rf_module, rf_ready
-    if rf_module is not None or rf_ready:
-        return rf_module, rf_ready
+    """Try to load RetinaFace. Returns (module, ready). Silent if unavailable."""
     try:
-        rf_module, rf_ready = load_face_extractor()
+        mod, ready = load_face_extractor()
+        return mod, ready
     except Exception:
-        rf_module, rf_ready = None, False
-    return rf_module, rf_ready
+        return None, False
 
-# Model path status indicator (no loading yet)
-if os.path.exists(model_path):
+# Model status banner — check cache without triggering a load
+_model_cached = load_model.cache_info() if hasattr(load_model, "cache_info") else None
+_already_loaded = st.session_state.get("_model_ready", False)
+
+if not os.path.exists(model_path):
+    st.markdown(f"""
+    <div style='background:#2d0a0a;border:1px solid #ff4444;border-radius:8px;
+                padding:0.6rem 1rem;margin-bottom:1rem;
+                font-family:Space Mono,monospace;font-size:0.78rem;color:#ff4444'>
+        ⚠ Model not found at <b>{model_path}</b> — enter correct path in sidebar
+    </div>""", unsafe_allow_html=True)
+elif _already_loaded:
+    st.markdown(f"""
+    <div style='background:#0a2d1a;border:1px solid #00e676;border-radius:8px;
+                padding:0.6rem 1rem;margin-bottom:1rem;
+                font-family:Space Mono,monospace;font-size:0.78rem;color:#00e676'>
+        ✓ Model loaded &nbsp;·&nbsp; Threshold: {threshold}
+    </div>""", unsafe_allow_html=True)
+else:
     st.markdown(f"""
     <div style='background:#0a2d1a;border:1px solid #00e676;border-radius:8px;
                 padding:0.6rem 1rem;margin-bottom:1rem;
                 font-family:Space Mono,monospace;font-size:0.78rem;color:#00e676'>
         ✓ Model file found: <b>{model_path}</b>
         &nbsp;·&nbsp; Will load on first analysis &nbsp;·&nbsp; Threshold: {threshold}
-    </div>""", unsafe_allow_html=True)
-else:
-    st.markdown(f"""
-    <div style='background:#2d0a0a;border:1px solid #ff4444;border-radius:8px;
-                padding:0.6rem 1rem;margin-bottom:1rem;
-                font-family:Space Mono,monospace;font-size:0.78rem;color:#ff4444'>
-        ⚠ Model not found at <b>{model_path}</b> — enter correct path in sidebar
     </div>""", unsafe_allow_html=True)
 
 # Mode tabs
@@ -840,10 +837,14 @@ with tab_img:
             st.image(img_rgb, caption="Uploaded image", use_column_width=True)
 
             if st.button("🔍  Analyse Image", key="btn_img"):
-                _m, _d, _ok = ensure_model_loaded()
-                if _ok:
+                with st.spinner("Loading model..." if not st.session_state.get("_model_ready") else "Running inference..."):
+                    _m, _d, _ok = ensure_model_loaded()
+                if not _ok:
+                    st.error("Could not load model. Check path in sidebar.")
+                else:
+                    st.session_state["_model_ready"] = True
                     _rf, _rr = ensure_rf_loaded()
-                    with st.spinner("Running inference..."):
+                    with st.spinner("Analysing image..."):
                         label, prob_fake, conf, overlay, heatmap, face_det = run_inference(
                             _m, _d, img_rgb, threshold, _rf, _rr
                         )
@@ -857,7 +858,6 @@ with tab_img:
                         "name":          uploaded.name,
                         "face_detected": face_det,
                     }
-                    st.rerun()
 
     with col_res:
         section("Analysis Result")
@@ -933,10 +933,13 @@ with tab_vid:
             st.video(vid_file)
 
             if st.button("🔍  Analyse Video", key="btn_vid"):
-                _m, _d, _ok = ensure_model_loaded()
+                with st.spinner("Loading model..." if not st.session_state.get("_model_ready") else "Preparing..."):
+                    _m, _d, _ok = ensure_model_loaded()
                 if not _ok:
+                    st.error("Could not load model. Check path in sidebar.")
                     st.stop()
-                model, device     = _m, _d
+                st.session_state["_model_ready"] = True
+                model, device       = _m, _d
                 rf_module, rf_ready = ensure_rf_loaded()
 
                 # Save to temp file
