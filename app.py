@@ -288,8 +288,8 @@ class ChannelAttention(nn.Module):
 
     def forward(self, x):
         b, c, _, _ = x.shape
-        avg   = self.fc(self.avg_pool(x).view(b, c))
-        mx    = self.fc(self.max_pool(x).view(b, c))
+        avg = self.fc(self.avg_pool(x).view(b, c))
+        mx  = self.fc(self.max_pool(x).view(b, c))
         return x * self.sigmoid(avg + mx).view(b, c, 1, 1)
 
 
@@ -339,13 +339,13 @@ class AttentionXception(nn.Module):
 # ================================================================
 @st.cache_resource
 def load_model(model_path):
+    import time
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model  = AttentionXception()
-    import time
-    start = time.time()
+    start  = time.time()
     print("Loading DeepShield model...")
-    state = torch.load(model_path, map_location=device)
-    print(f"Model loaded in {time.time()-start:.2f} sec")
+    state  = torch.load(model_path, map_location=device)
+    print(f"Model loaded in {time.time() - start:.2f} sec")
     if "model_state_dict" in state:
         state = state["model_state_dict"]
     model.load_state_dict(state)
@@ -360,26 +360,18 @@ def load_model(model_path):
 @st.cache_resource
 def load_face_extractor():
     import time
-
     start = time.time()
     print("Loading RetinaFace...")
-
     try:
         from retinaface import RetinaFace
-
-        print(
-            f"RetinaFace loaded in "
-            f"{time.time()-start:.2f} sec"
-        )
-
+        print(f"RetinaFace loaded in {time.time() - start:.2f} sec")
         return RetinaFace, True
-
     except Exception as e:
         print(f"RetinaFace error: {e}")
         return None, False
 
-def extract_face(img_rgb, rf_module, rf_ready,
-                 conf_thresh=0.90, margin=0.30):
+
+def extract_face(img_rgb, rf_module, rf_ready, conf_thresh=0.90, margin=0.30):
     """
     Uses RetinaFace to detect and crop the largest face.
     Falls back to full frame if no face found.
@@ -392,21 +384,20 @@ def extract_face(img_rgb, rf_module, rf_ready,
             faces   = rf_module.detect_faces(img_bgr, threshold=conf_thresh)
 
             if isinstance(faces, dict) and len(faces) > 0:
-                # Pick LARGEST face by area
                 best, best_area = None, -1
                 for val in faces.values():
                     x1, y1, x2, y2 = val["facial_area"]
-                    area = (x2-x1) * (y2-y1)
+                    area = (x2 - x1) * (y2 - y1)
                     if area > best_area:
                         best_area = area
                         best      = val
 
                 if best is not None:
                     x1, y1, x2, y2 = best["facial_area"]
-                    dw = int((x2-x1)*margin)
-                    dh = int((y2-y1)*margin)
-                    x1 = max(0, x1-dw); y1 = max(0, y1-dh)
-                    x2 = min(w, x2+dw); y2 = min(h, y2+dh)
+                    dw = int((x2 - x1) * margin)
+                    dh = int((y2 - y1) * margin)
+                    x1 = max(0, x1 - dw); y1 = max(0, y1 - dh)
+                    x2 = min(w, x2 + dw); y2 = min(h, y2 + dh)
                     face = img_rgb[y1:y2, x1:x2]
                     if face.size > 0:
                         return cv2.resize(face, (299, 299)), True
@@ -416,8 +407,7 @@ def extract_face(img_rgb, rf_module, rf_ready,
     return cv2.resize(img_rgb, (299, 299)), False
 
 
-def extract_all_faces(img_rgb, rf_module, rf_ready,
-                      conf_thresh=0.90, margin=0.30):
+def extract_all_faces(img_rgb, rf_module, rf_ready, conf_thresh=0.90, margin=0.30):
     """
     Uses RetinaFace to detect ALL faces in a frame.
     Returns list of (face_rgb 299x299, face_id, score).
@@ -434,15 +424,14 @@ def extract_all_faces(img_rgb, rf_module, rf_ready,
             if isinstance(faces, dict) and len(faces) > 0:
                 for fid, val in faces.items():
                     x1, y1, x2, y2 = val["facial_area"]
-                    dw  = int((x2-x1)*margin)
-                    dh  = int((y2-y1)*margin)
-                    x1c = max(0, x1-dw); y1c = max(0, y1-dh)
-                    x2c = min(w, x2+dw); y2c = min(h, y2+dh)
+                    dw  = int((x2 - x1) * margin)
+                    dh  = int((y2 - y1) * margin)
+                    x1c = max(0, x1 - dw); y1c = max(0, y1 - dh)
+                    x2c = min(w, x2 + dw); y2c = min(h, y2 + dh)
                     face = img_rgb[y1c:y2c, x1c:x2c]
                     if face.size > 0:
                         face = cv2.resize(face, (299, 299))
-                        result.append((face, fid,
-                                       float(val.get("score", 0))))
+                        result.append((face, fid, float(val.get("score", 0))))
                 if result:
                     return result
         except Exception:
@@ -450,23 +439,30 @@ def extract_all_faces(img_rgb, rf_module, rf_ready,
 
     return [(cv2.resize(img_rgb, (299, 299)), "full_frame", 0.0)]
 
+
 # ================================================================
 MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 STD  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
+
 def preprocess(img_rgb, device, size=299):
-    # Ensure numpy array in correct format
     if not isinstance(img_rgb, np.ndarray):
         img_rgb = np.array(img_rgb)
     if img_rgb.dtype != np.uint8:
         img_rgb = (img_rgb * 255).astype(np.uint8)
-    if len(img_rgb.shape) == 2:                        # grayscale -> RGB
+    if len(img_rgb.shape) == 2:
         img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_GRAY2RGB)
-    if img_rgb.shape[2] == 4:                          # RGBA -> RGB
+    if img_rgb.shape[2] == 4:
         img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_RGBA2RGB)
     img = cv2.resize(img_rgb, (size, size)).astype(np.float32) / 255.0
     img = (img - MEAN) / STD
-    return torch.from_numpy(np.ascontiguousarray(img)).permute(2,0,1).unsqueeze(0).float().to(device)
+    return (
+        torch.from_numpy(np.ascontiguousarray(img))
+        .permute(2, 0, 1)
+        .unsqueeze(0)
+        .float()
+        .to(device)
+    )
 
 
 class GradCAM:
@@ -477,31 +473,33 @@ class GradCAM:
         self._hooks      = []
         t = model.cbam.spatial.conv
         self._hooks.append(t.register_forward_hook(
-            lambda m,i,o: setattr(self,"activations",o.detach())))
+            lambda m, i, o: setattr(self, "activations", o.detach())))
         self._hooks.append(t.register_full_backward_hook(
-            lambda m,gi,go: setattr(self,"gradients",go[0].detach())))
+            lambda m, gi, go: setattr(self, "gradients", go[0].detach())))
 
     def generate(self, tensor):
         self.model.zero_grad()
         out = self.model(tensor)
         out.backward(torch.ones_like(out))
-        w   = self.gradients.mean(dim=[2,3], keepdim=True)
+        w   = self.gradients.mean(dim=[2, 3], keepdim=True)
         cam = torch.relu((w * self.activations).sum(1)).squeeze()
         cam = cam.cpu().numpy()
         cam -= cam.min()
-        if cam.max() > 0: cam /= cam.max()
+        if cam.max() > 0:
+            cam /= cam.max()
         return cam, torch.sigmoid(out).item()
 
     def remove(self):
-        for h in self._hooks: h.remove()
+        for h in self._hooks:
+            h.remove()
 
 
 def make_overlay(face_rgb, cam):
-    h, w   = face_rgb.shape[:2]
-    cam_r  = cv2.resize(cam, (w, h))
-    heat   = cv2.applyColorMap((cam_r*255).astype(np.uint8), cv2.COLORMAP_JET)
-    heat   = cv2.cvtColor(heat, cv2.COLOR_BGR2RGB)
-    overlay= (0.55*face_rgb + 0.45*heat).astype(np.uint8)
+    h, w    = face_rgb.shape[:2]
+    cam_r   = cv2.resize(cam, (w, h))
+    heat    = cv2.applyColorMap((cam_r * 255).astype(np.uint8), cv2.COLORMAP_JET)
+    heat    = cv2.cvtColor(heat, cv2.COLOR_BGR2RGB)
+    overlay = (0.55 * face_rgb + 0.45 * heat).astype(np.uint8)
     return overlay, heat
 
 
@@ -511,10 +509,8 @@ def run_inference(model, device, img_rgb, threshold=0.5,
     Full pipeline:
       RetinaFace face crop -> preprocess -> infer -> GradCAM -> overlay
     """
-    # Step 1 - extract face (or fall back to full frame)
     face_rgb, face_detected = extract_face(img_rgb, rf_module, rf_ready)
 
-    # Step 2 - infer + GradCAM
     gcam             = GradCAM(model)
     tensor           = preprocess(face_rgb, device)
     cam, prob_fake   = gcam.generate(tensor)
@@ -532,14 +528,13 @@ def generate_pdf(results, mode, source_name, threshold):
     buf = io.BytesIO()
     ts  = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    fakes    = [r for r in results if r["label"] == "FAKE"]
-    reals    = [r for r in results if r["label"] == "REAL"]
-    fake_pct = 100 * len(fakes) / max(len(results), 1)
+    fakes        = [r for r in results if r["label"] == "FAKE"]
+    reals        = [r for r in results if r["label"] == "REAL"]
+    fake_pct     = 100 * len(fakes) / max(len(results), 1)
     avg_prob_raw = np.mean([r["prob_fake"] for r in results])
-    avg_prob = avg_prob_raw * 100
-    # Simple average verdict — matches working inference script
-    verdict  = "FAKE" if avg_prob_raw >= threshold else "REAL"
-    vcolor   = "#e74c3c" if verdict == "FAKE" else "#2ecc71"
+    avg_prob     = avg_prob_raw * 100
+    verdict      = "FAKE" if avg_prob_raw >= threshold else "REAL"
+    vcolor       = "#e74c3c" if verdict == "FAKE" else "#2ecc71"
 
     with PdfPages(buf) as pdf:
         # ── Page 1: Summary ──────────────────────────────────────
@@ -555,12 +550,16 @@ def generate_pdf(results, mode, source_name, threshold):
         ax_v = fig.add_axes([0.32, 0.64, 0.36, 0.20])
         ax_v.set_facecolor(vcolor + "33")
         for spine in ax_v.spines.values():
-            spine.set_edgecolor(vcolor); spine.set_linewidth(2)
+            spine.set_edgecolor(vcolor)
+            spine.set_linewidth(2)
         ax_v.text(0.5, 0.65, verdict, transform=ax_v.transAxes,
                   ha="center", va="center", fontsize=38,
                   fontweight="bold", color=vcolor)
-        conf_val = np.mean([r["prob_fake"] for r in fakes])*100 if fakes else \
-                   (1-np.mean([r["prob_fake"] for r in reals]))*100
+        conf_val = (
+            np.mean([r["prob_fake"] for r in fakes]) * 100
+            if fakes
+            else (1 - np.mean([r["prob_fake"] for r in reals])) * 100
+        )
         ax_v.text(0.5, 0.22, f"Confidence: {conf_val:.1f}%",
                   transform=ax_v.transAxes, ha="center",
                   fontsize=13, color="white")
@@ -568,17 +567,20 @@ def generate_pdf(results, mode, source_name, threshold):
 
         # Stats table
         stats = [
-            ("Mode",                   mode.upper()),
-            ("Frames analysed",        str(len(results))),
-            ("Fake frames",            f"{len(fakes)} ({fake_pct:.1f}%)"),
-            ("Real frames",            f"{len(reals)} ({100-fake_pct:.1f}%)"),
-            ("Avg fake probability",   f"{avg_prob:.2f}%"),
-            ("Decision threshold",     f"{threshold*100:.0f}%"),
-            ("Model",                  "Attention-Xception + CBAM"),
-            ("Dataset",               "Balanced (31,949 Real + 31,949 Fake)"),
-            ("Test accuracy",          "98.67%"),
-            ("ROC-AUC",                "0.9990"),
+            ("Mode",                "MODE.UPPER()"),
+            ("Frames analysed",     str(len(results))),
+            ("Fake frames",         f"{len(fakes)} ({fake_pct:.1f}%)"),
+            ("Real frames",         f"{len(reals)} ({100 - fake_pct:.1f}%)"),
+            ("Avg fake probability",f"{avg_prob:.2f}%"),
+            ("Decision threshold",  f"{threshold * 100:.0f}%"),
+            ("Model",               "Attention-Xception + CBAM"),
+            ("Dataset",             "Balanced (31,949 Real + 31,949 Fake)"),
+            ("Test accuracy",       "98.67%"),
+            ("ROC-AUC",             "0.9990"),
         ]
+        # Fix: use actual mode variable, not string literal
+        stats[0] = ("Mode", mode.upper())
+
         y = 0.58
         for k, v in stats:
             fig.text(0.18, y, f"{k}:", fontsize=10, color="#9ca3af", ha="left")
@@ -591,13 +593,13 @@ def generate_pdf(results, mode, source_name, threshold):
             ax_t = fig.add_axes([0.08, 0.06, 0.84, 0.16])
             ax_t.set_facecolor("#12152a")
             fn   = [r["frame_no"] for r in results]
-            pb   = [r["prob_fake"]*100 for r in results]
-            cols = ["#ff4444" if p>=50 else "#00e676" for p in pb]
+            pb   = [r["prob_fake"] * 100 for r in results]
+            cols = ["#ff4444" if p >= 50 else "#00e676" for p in pb]
             ax_t.bar(fn, pb, color=cols,
-                     width=max(fn)/max(len(fn),1)*0.8)
+                     width=max(fn) / max(len(fn), 1) * 0.8)
             ax_t.axhline(50, color="white", ls="--", lw=0.8, alpha=0.4)
-            ax_t.set_xlabel("Frame", color="#9ca3af", fontsize=8)
-            ax_t.set_ylabel("Fake %", color="#9ca3af", fontsize=8)
+            ax_t.set_xlabel("Frame",    color="#9ca3af", fontsize=8)
+            ax_t.set_ylabel("Fake %",   color="#9ca3af", fontsize=8)
             ax_t.set_title("Per-Frame Fake Probability",
                            color="white", fontsize=9)
             ax_t.tick_params(colors="#9ca3af", labelsize=7)
@@ -616,24 +618,28 @@ def generate_pdf(results, mode, source_name, threshold):
                           key=lambda x: x["frame_no"])
 
         for i in range(0, len(samples), 2):
-            batch = samples[i:i+2]
+            batch = samples[i:i + 2]
             fig   = plt.figure(figsize=(11, 8.5))
             fig.patch.set_facecolor("#0d0f1a")
             fig.text(0.5, 0.97, "Frame Analysis — Original | Grad-CAM Overlay",
                      ha="center", fontsize=12, color="white", fontweight="bold")
 
             for j, r in enumerate(batch):
-                top = 0.50 - j*0.47
-                c   = "#e74c3c" if r["label"]=="FAKE" else "#2ecc71"
-                cf  = r["prob_fake"] if r["label"]=="FAKE" else 1-r["prob_fake"]
+                top = 0.50 - j * 0.47
+                c   = "#e74c3c" if r["label"] == "FAKE" else "#2ecc71"
+                cf  = r["prob_fake"] if r["label"] == "FAKE" else 1 - r["prob_fake"]
 
                 ax1 = fig.add_axes([0.05, top, 0.42, 0.40])
-                ax1.imshow(r["original_rgb"]); ax1.axis("off")
-                ax1.set_title(f"Frame {r['frame_no']} — {r['label']}  {cf*100:.1f}%",
-                              color=c, fontsize=11, fontweight="bold", pad=5)
+                ax1.imshow(r["original_rgb"])
+                ax1.axis("off")
+                ax1.set_title(
+                    f"Frame {r['frame_no']} — {r['label']}  {cf * 100:.1f}%",
+                    color=c, fontsize=11, fontweight="bold", pad=5
+                )
 
                 ax2 = fig.add_axes([0.53, top, 0.42, 0.40])
-                ax2.imshow(r["overlay_rgb"]); ax2.axis("off")
+                ax2.imshow(r["overlay_rgb"])
+                ax2.axis("off")
                 ax2.set_title("Grad-CAM Attention",
                               color="white", fontsize=11, pad=5)
 
@@ -652,24 +658,24 @@ def render_verdict(label, conf, prob_fake):
         st.markdown(f"""
         <div class="verdict-fake">
             <p class="verdict-label-fake">⚠ FAKE</p>
-            <p class="confidence-text">Confidence: {conf*100:.1f}%</p>
+            <p class="confidence-text">Confidence: {conf * 100:.1f}%</p>
             <div class="prob-bar-wrap">
-                <div class="prob-bar-fill-fake" style="width:{prob_fake*100:.1f}%"></div>
+                <div class="prob-bar-fill-fake" style="width:{prob_fake * 100:.1f}%"></div>
             </div>
             <p class="confidence-text" style="font-size:0.8rem;margin-top:0.3rem">
-                Fake probability: {prob_fake*100:.2f}%
+                Fake probability: {prob_fake * 100:.2f}%
             </p>
         </div>""", unsafe_allow_html=True)
     else:
         st.markdown(f"""
         <div class="verdict-real">
             <p class="verdict-label-real">✓ REAL</p>
-            <p class="confidence-text">Confidence: {conf*100:.1f}%</p>
+            <p class="confidence-text">Confidence: {conf * 100:.1f}%</p>
             <div class="prob-bar-wrap">
-                <div class="prob-bar-fill-real" style="width:{conf*100:.1f}%"></div>
+                <div class="prob-bar-fill-real" style="width:{conf * 100:.1f}%"></div>
             </div>
             <p class="confidence-text" style="font-size:0.8rem;margin-top:0.3rem">
-                Real probability: {(1-prob_fake)*100:.2f}%
+                Real probability: {(1 - prob_fake) * 100:.2f}%
             </p>
         </div>""", unsafe_allow_html=True)
 
@@ -707,7 +713,6 @@ with st.sidebar:
 
     st.divider()
 
-    # Model path
     section("Model")
     model_path = st.text_input(
         "Path to best_model.pth",
@@ -717,7 +722,6 @@ with st.sidebar:
 
     st.divider()
 
-    # Settings
     section("Settings")
     threshold = st.slider(
         "Decision Threshold",
@@ -734,7 +738,6 @@ with st.sidebar:
 
     st.divider()
 
-    # Model info
     section("Model Info")
     st.markdown("""
     <div style='font-family:Space Mono,monospace;font-size:0.72rem;
@@ -763,7 +766,8 @@ st.markdown("""
 
 # Load RetinaFace
 rf_module = None
-rf_ready = False
+rf_ready  = False
+
 if rf_ready:
     st.markdown("""
     <div style='background:#0a1a2d;border:1px solid #00b4d8;border-radius:8px;
@@ -831,21 +835,25 @@ with tab_img:
                 if rf_module is None:
                     with st.spinner("Loading Face Detector..."):
                         try:
-                            rf_module = load_face_extractor()
-                            rf_ready = rf_module is not None
+                            rf_module, rf_ready = load_face_extractor()
                         except Exception:
                             rf_module = None
-                            rf_ready = False
-                            run_inference(model, device, face_rgb, threshold,
-                                          rf_module, rf_ready)
+                            rf_ready  = False
 
-                        st.session_state["img_result"] = {
-                            "label": label, "prob_fake": prob_fake,
-                            "conf": conf, "overlay": overlay,
-                            "heatmap": heatmap, "original": face_rgb,
-                            "name": uploaded.name,
-                            "face_detected": face_det
-                        }
+                label, prob_fake, conf, overlay, heatmap, face_det = run_inference(
+                    model, device, img_rgb, threshold, rf_module, rf_ready
+                )
+
+                st.session_state["img_result"] = {
+                    "label":         label,
+                    "prob_fake":     prob_fake,
+                    "conf":          conf,
+                    "overlay":       overlay,
+                    "heatmap":       heatmap,
+                    "original":      np.array(img_pil.resize((299, 299))),
+                    "name":          uploaded.name,
+                    "face_detected": face_det,
+                }
 
     with col_res:
         section("Analysis Result")
@@ -853,7 +861,6 @@ with tab_img:
         if "img_result" in st.session_state:
             r = st.session_state["img_result"]
 
-            # Face detection status
             det_status = "RetinaFace crop" if r.get("face_detected") else "Full frame (no face detected)"
             det_color  = "#00b4d8" if r.get("face_detected") else "#f59e0b"
             st.markdown(f"""
@@ -862,39 +869,33 @@ with tab_img:
                 Face detection: {det_status}
             </div>""", unsafe_allow_html=True)
 
-            # Verdict
             render_verdict(r["label"], r["conf"], r["prob_fake"])
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # Metrics row
             mc1, mc2, mc3 = st.columns(3)
             with mc1:
-                render_metric("Fake Prob", f"{r['prob_fake']*100:.1f}%")
+                render_metric("Fake Prob",  f"{r['prob_fake'] * 100:.1f}%")
             with mc2:
-                render_metric("Real Prob", f"{(1-r['prob_fake'])*100:.1f}%")
+                render_metric("Real Prob",  f"{(1 - r['prob_fake']) * 100:.1f}%")
             with mc3:
-                render_metric("Threshold", f"{threshold*100:.0f}%")
+                render_metric("Threshold",  f"{threshold * 100:.0f}%")
 
-            # Grad-CAM
             section("Grad-CAM Attention Map")
             g1, g2 = st.columns(2)
             with g1:
-                st.image(r["heatmap"],
-                         caption="Attention heatmap", use_column_width=True)
+                st.image(r["heatmap"],  caption="Attention heatmap", use_column_width=True)
             with g2:
-                st.image(r["overlay"],
-                         caption="Overlay on face", use_column_width=True)
+                st.image(r["overlay"],  caption="Overlay on face",   use_column_width=True)
 
-            # PDF download
             section("Export")
             result_entry = [{
-                "frame_no": 1, "label": r["label"],
-                "prob_fake": r["prob_fake"],
+                "frame_no":    1,
+                "label":       r["label"],
+                "prob_fake":   r["prob_fake"],
                 "original_rgb": r["original"],
                 "overlay_rgb":  r["overlay"],
             }]
-            pdf_buf = generate_pdf(result_entry, "image",
-                                   r["name"], threshold)
+            pdf_buf = generate_pdf(result_entry, "image", r["name"], threshold)
             st.download_button(
                 label="📄  Download PDF Report",
                 data=pdf_buf,
@@ -932,48 +933,44 @@ with tab_vid:
                     if rf_module is None:
                         with st.spinner("Loading Face Detector..."):
                             try:
-                                rf_module = load_face_extractor()
-                                rf_ready = rf_module is not None
+                                rf_module, rf_ready = load_face_extractor()
                             except Exception:
                                 rf_module = None
-                                rf_ready = False
+                                rf_ready  = False
 
-    # Save to temp file
-    with tempfile.NamedTemporaryFile(
-        delete=False, suffix=".mp4"
-    ) as tmp:
+                    # Save to temp file
+                    with tempfile.NamedTemporaryFile(
+                        delete=False, suffix=".mp4"
+                    ) as tmp:
                         tmp.write(vid_file.read())
                         tmp_path = tmp.name
-    results  = []
-    progress = st.progress(0, text="Reading video...")
-    status   = st.empty()
 
-    cap          = cv2.VideoCapture(tmp_path)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    frame_no     = 0
+                    results   = []
+                    progress  = st.progress(0, text="Reading video...")
+                    status    = st.empty()
+                    all_probs = []  # flat list of all face probs
 
-                    # ── Video loop — matches working inference script ──
+                    cap          = cv2.VideoCapture(tmp_path)
+                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+                    # ── Video loop ────────────────────────────────
                     frames_to_process = total_frames // frame_skip
-                    all_probs = []   # flat list of all face probs (like working script)
 
                     for i in range(frames_to_process):
-                        # Jump directly to frame (faster than reading sequentially)
                         cap.set(cv2.CAP_PROP_POS_FRAMES, i * frame_skip)
                         ret, frame_bgr = cap.read()
                         if not ret:
                             break
 
                         frame_no = i * frame_skip
-                        pct = int((i+1) / max(frames_to_process, 1) * 100)
-                        progress.progress(pct,
-                            text=f"Frame {frame_no}/{total_frames}")
+                        pct      = int((i + 1) / max(frames_to_process, 1) * 100)
+                        progress.progress(pct, text=f"Frame {frame_no}/{total_frames}")
 
-                        # Resize to 640x360 BEFORE RetinaFace (speed + accuracy)
+                        # Resize before RetinaFace (speed + accuracy)
                         frame_bgr = cv2.resize(frame_bgr, (640, 360))
                         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
                         frame_rgb = np.ascontiguousarray(frame_rgb)
 
-                        # Detect ALL faces with RetinaFace
                         face_probs   = []
                         best_overlay = None
                         best_prob    = 0.0
@@ -982,82 +979,85 @@ with tab_vid:
                         if rf_ready and rf_module is not None:
                             try:
                                 img_bgr_rf = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-                                faces = rf_module.detect_faces(img_bgr_rf)
+                                faces      = rf_module.detect_faces(img_bgr_rf)
 
                                 if isinstance(faces, dict) and len(faces) > 0:
                                     for fid, face_val in faces.items():
-                                        x1,y1,x2,y2 = map(int, face_val["facial_area"])
+                                        x1, y1, x2, y2 = map(int, face_val["facial_area"])
                                         face_crop = frame_rgb[y1:y2, x1:x2]
                                         if face_crop.size == 0:
                                             continue
 
-                                        # Preprocess exactly like working script
-                                        fc = cv2.resize(face_crop, (299,299))
+                                        fc = cv2.resize(face_crop, (299, 299))
                                         fc = fc.astype(np.float32) / 255.0
-                                        fc = (fc - np.array([0.485,0.456,0.406])) /                                              np.array([0.229,0.224,0.225])
-                                        tensor = torch.from_numpy(
-                                            np.ascontiguousarray(fc)
-                                        ).permute(2,0,1).unsqueeze(0).float().to(device)
+                                        fc = (fc - np.array([0.485, 0.456, 0.406])) / \
+                                             np.array([0.229, 0.224, 0.225])
+                                        tensor = (
+                                            torch.from_numpy(np.ascontiguousarray(fc))
+                                            .permute(2, 0, 1)
+                                            .unsqueeze(0)
+                                            .float()
+                                            .to(device)
+                                        )
 
                                         with torch.no_grad():
-                                            out      = model(tensor)
-                                            prob     = torch.sigmoid(out).item()
+                                            out  = model(tensor)
+                                            prob = torch.sigmoid(out).item()
 
                                         face_probs.append(prob)
                                         all_probs.append(prob)
 
-                                        # Grad-CAM for best face
                                         if prob > best_prob:
-                                            best_prob = prob
-                                            _, ov = make_overlay(
-                                                cv2.resize(face_crop,(299,299)),
-                                                np.zeros((10,10), dtype=np.float32)
-                                            )
-                                            best_overlay = cv2.resize(face_crop,(299,299))
+                                            best_prob    = prob
+                                            best_overlay = cv2.resize(face_crop, (299, 299))
 
-                                        face_summary += f"{fid}:{prob*100:.0f}% "
+                                        face_summary += f"{fid}:{prob * 100:.0f}% "
                             except Exception:
                                 pass
 
-                        # Fallback if no faces found
+                        # Fallback — no faces found
                         if not face_probs:
-                            fc = cv2.resize(frame_rgb,(299,299))
-                            fc_n = fc.astype(np.float32)/255.0
-                            fc_n = (fc_n-np.array([0.485,0.456,0.406])) /                                    np.array([0.229,0.224,0.225])
-                            tensor = torch.from_numpy(
-                                np.ascontiguousarray(fc_n)
-                            ).permute(2,0,1).unsqueeze(0).float().to(device)
+                            fc   = cv2.resize(frame_rgb, (299, 299))
+                            fc_n = fc.astype(np.float32) / 255.0
+                            fc_n = (fc_n - np.array([0.485, 0.456, 0.406])) / \
+                                   np.array([0.229, 0.224, 0.225])
+                            tensor = (
+                                torch.from_numpy(np.ascontiguousarray(fc_n))
+                                .permute(2, 0, 1)
+                                .unsqueeze(0)
+                                .float()
+                                .to(device)
+                            )
                             with torch.no_grad():
                                 prob = torch.sigmoid(model(tensor)).item()
                             face_probs.append(prob)
                             all_probs.append(prob)
                             best_prob    = prob
-                            best_overlay = cv2.resize(frame_rgb,(299,299))
-                            face_summary = f"full_frame:{prob*100:.0f}%"
+                            best_overlay = cv2.resize(frame_rgb, (299, 299))
+                            face_summary = f"full_frame:{prob * 100:.0f}%"
 
-                        # Frame verdict
                         frame_avg = np.mean(face_probs)
-                        label = "FAKE" if frame_avg >= threshold else "REAL"
-                        conf  = frame_avg if label=="FAKE" else 1-frame_avg
+                        label     = "FAKE" if frame_avg >= threshold else "REAL"
+                        conf      = frame_avg if label == "FAKE" else 1 - frame_avg
 
                         results.append({
                             "frame_no":     frame_no,
                             "label":        label,
                             "prob_fake":    frame_avg,
                             "conf":         conf,
-                            "original_rgb": cv2.resize(frame_rgb,(299,299)),
+                            "original_rgb": cv2.resize(frame_rgb, (299, 299)),
                             "overlay_rgb":  best_overlay,
                             "face_summary": face_summary.strip(),
                             "n_faces":      len(face_probs),
                         })
 
-                        col = "#ff4444" if label=="FAKE" else "#00e676"
+                        col = "#ff4444" if label == "FAKE" else "#00e676"
                         status.markdown(
                             f"<span style='font-family:Space Mono,monospace;"
                             f"font-size:0.78rem;color:#9ca3af'>"
                             f"Frame {frame_no} | {len(face_probs)} face(s) | "
                             f"<b style='color:{col}'>{label}</b> "
-                            f"{conf*100:.1f}% | {face_summary}"
+                            f"{conf * 100:.1f}% | {face_summary}"
                             f"</span>",
                             unsafe_allow_html=True
                         )
@@ -1069,7 +1069,7 @@ with tab_vid:
 
                     st.session_state["vid_results"] = {
                         "results": results,
-                        "name": vid_file.name
+                        "name":    vid_file.name,
                     }
 
     with col_vr:
@@ -1086,37 +1086,38 @@ with tab_vid:
                 reals    = [r for r in results if r["label"] == "REAL"]
                 fake_pct = 100 * len(fakes) / len(results)
                 avg_prob = np.mean([r["prob_fake"] for r in results])
-                max_prob = np.max([r["prob_fake"] for r in results])
+                max_prob = np.max([r["prob_fake"]  for r in results])
 
-                # VERDICT: same as working script — simple average of ALL face probs
-                # If avg fake score > threshold → FAKE
                 verdict = "FAKE" if avg_prob >= threshold else "REAL"
                 conf_v  = avg_prob if verdict == "FAKE" else 1 - avg_prob
 
                 render_verdict(verdict, conf_v, avg_prob)
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # Metrics
                 m1, m2, m3, m4, m5 = st.columns(5)
-                with m1: render_metric("Frames", str(len(results)))
+                with m1: render_metric("Frames",      str(len(results)))
                 with m2: render_metric("Fake frames", f"{fake_pct:.1f}%")
-                with m3: render_metric("Avg prob", f"{avg_prob*100:.1f}%")
-                with m4: render_metric("Max prob", f"{max_prob*100:.1f}%")
-                with m5: render_metric("Verdict by", "any face >85%" if max_prob>=0.85 else ">20% frames" if fake_pct>=20 else "avg >40%")
+                with m3: render_metric("Avg prob",    f"{avg_prob * 100:.1f}%")
+                with m4: render_metric("Max prob",    f"{max_prob * 100:.1f}%")
+                with m5: render_metric(
+                    "Verdict by",
+                    "any face >85%" if max_prob >= 0.85
+                    else ">20% frames" if fake_pct >= 20
+                    else "avg >40%"
+                )
 
-                # Timeline chart
                 section("Frame-by-Frame Timeline")
                 fig, ax = plt.subplots(figsize=(8, 2.5))
                 fig.patch.set_facecolor("#12152a")
                 ax.set_facecolor("#12152a")
                 fn   = [r["frame_no"] for r in results]
-                pb   = [r["prob_fake"]*100 for r in results]
-                cols = ["#ff4444" if p>=50 else "#00e676" for p in pb]
+                pb   = [r["prob_fake"] * 100 for r in results]
+                cols = ["#ff4444" if p >= 50 else "#00e676" for p in pb]
                 ax.bar(fn, pb, color=cols,
-                       width=max(fn)/max(len(fn),1)*0.8)
-                ax.axhline(threshold*100, color="white",
+                       width=max(fn) / max(len(fn), 1) * 0.8)
+                ax.axhline(threshold * 100, color="white",
                            ls="--", lw=1, alpha=0.4,
-                           label=f"Threshold {threshold*100:.0f}%")
+                           label=f"Threshold {threshold * 100:.0f}%")
                 ax.set_xlabel("Frame number", color="#9ca3af", fontsize=8)
                 ax.set_ylabel("Fake %",       color="#9ca3af", fontsize=8)
                 ax.tick_params(colors="#9ca3af", labelsize=7)
@@ -1129,50 +1130,44 @@ with tab_vid:
                 st.pyplot(fig, use_container_width=True)
                 plt.close()
 
-                # Frame details
                 section("Frame Details")
                 for r in results:
-                    c    = "#ff4444" if r["label"]=="FAKE" else "#00e676"
+                    c    = "#ff4444" if r["label"] == "FAKE" else "#00e676"
                     nf   = r.get("n_faces", 1)
                     summ = r.get("face_summary", "")
                     st.markdown(
-                        f"<div class='frame-row-{'fake' if r['label']=='FAKE' else 'real'}'>"
+                        f"<div class='frame-row-{'fake' if r['label'] == 'FAKE' else 'real'}'>"
                         f"Frame {r['frame_no']:>5} &nbsp;·&nbsp; "
                         f"{nf} face(s) &nbsp;·&nbsp; "
                         f"<b style='color:{c}'>{r['label']}</b>"
-                        f" &nbsp;·&nbsp; {r['prob_fake']*100:.1f}% fake"
+                        f" &nbsp;·&nbsp; {r['prob_fake'] * 100:.1f}% fake"
                         f"{'&nbsp; | &nbsp;' + summ if summ else ''}"
                         f"</div>",
                         unsafe_allow_html=True
                     )
 
-                # Sample Grad-CAMs
                 section("Sample Grad-CAM Frames")
-                top_fake = sorted(fakes, key=lambda x: x["prob_fake"],
-                                  reverse=True)[:2]
+                top_fake = sorted(fakes, key=lambda x: x["prob_fake"], reverse=True)[:2]
                 top_real = sorted(reals, key=lambda x: x["prob_fake"])[:2]
                 samples  = top_fake + top_real
 
                 if samples:
                     gcols = st.columns(len(samples))
                     for col, r in zip(gcols, samples):
-                        c = "#ff4444" if r["label"]=="FAKE" else "#00e676"
+                        c = "#ff4444" if r["label"] == "FAKE" else "#00e676"
                         with col:
-                            st.image(r["overlay_rgb"],
-                                     use_column_width=True)
+                            st.image(r["overlay_rgb"], use_column_width=True)
                             st.markdown(
                                 f"<p style='text-align:center;"
                                 f"font-family:Space Mono,monospace;"
                                 f"font-size:0.7rem;color:{c}'>"
                                 f"Frame {r['frame_no']}<br>"
-                                f"{r['label']} {r['prob_fake']*100:.1f}%</p>",
+                                f"{r['label']} {r['prob_fake'] * 100:.1f}%</p>",
                                 unsafe_allow_html=True
                             )
 
-                # PDF download
                 section("Export")
-                pdf_buf = generate_pdf(results, "video",
-                                       vr["name"], threshold)
+                pdf_buf = generate_pdf(results, "video", vr["name"], threshold)
                 st.download_button(
                     label="📄  Download PDF Report",
                     data=pdf_buf,
