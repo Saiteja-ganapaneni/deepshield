@@ -341,7 +341,11 @@ class AttentionXception(nn.Module):
 def load_model(model_path):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model  = AttentionXception()
-    state  = torch.load(model_path, map_location=device)
+    import time
+    start = time.time()
+    print("Loading DeepShield model...")
+    state = torch.load(model_path, map_location=device)
+    print(f"Model loaded in {time.time()-start:.2f} sec")
     if "model_state_dict" in state:
         state = state["model_state_dict"]
     model.load_state_dict(state)
@@ -355,10 +359,23 @@ def load_model(model_path):
 # ================================================================
 @st.cache_resource
 def load_face_extractor():
+    import time
+
+    start = time.time()
+    print("Loading RetinaFace...")
+
     try:
         from retinaface import RetinaFace
+
+        print(
+            f"RetinaFace loaded in "
+            f"{time.time()-start:.2f} sec"
+        )
+
         return RetinaFace, True
-    except Exception:
+
+    except Exception as e:
+        print(f"RetinaFace error: {e}")
         return None, False
 
 def extract_face(img_rgb, rf_module, rf_ready,
