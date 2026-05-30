@@ -764,47 +764,55 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Load RetinaFace
-rf_module = None
-rf_ready  = False
-
-if rf_ready:
-    st.markdown("""
-    <div style='background:#0a1a2d;border:1px solid #00b4d8;border-radius:8px;
-                padding:0.5rem 1rem;margin-bottom:0.5rem;
-                font-family:Space Mono,monospace;font-size:0.75rem;color:#00b4d8'>
-        ✓ RetinaFace loaded — face detection active
-    </div>""", unsafe_allow_html=True)
-else:
-    st.markdown("""
-    <div style='background:#1a1a0a;border:1px solid #f59e0b;border-radius:8px;
-                padding:0.5rem 1rem;margin-bottom:0.5rem;
-                font-family:Space Mono,monospace;font-size:0.75rem;color:#f59e0b'>
-        ⚠ RetinaFace not loaded — using full frame
-        &nbsp;·&nbsp; pip install tensorflow==2.13.0 retina-face==0.0.14
-    </div>""", unsafe_allow_html=True)
-
-# Load model
+# ── Lazy state — nothing loads at startup ────────────────────────
+rf_module    = None
+rf_ready     = False
+model        = None
+device       = None
 model_loaded = False
-if os.path.exists(model_path):
+
+def ensure_model_loaded():
+    """Load model on first use (cached after that). Returns (model, device, ok)."""
+    global model, device, model_loaded
+    if model_loaded:
+        return model, device, True
+    if not os.path.exists(model_path):
+        st.error("⚠ Model file not found — check the path in the sidebar.")
+        return None, None, False
     try:
         model, device = load_model(model_path)
         model_loaded  = True
-        st.markdown(f"""
-        <div style='background:#0a2d1a;border:1px solid #00e676;border-radius:8px;
-                    padding:0.6rem 1rem;margin-bottom:1rem;
-                    font-family:Space Mono,monospace;font-size:0.78rem;color:#00e676'>
-            ✓ Model loaded &nbsp;·&nbsp; Device: {device.upper()}
-            &nbsp;·&nbsp; Threshold: {threshold}
-        </div>""", unsafe_allow_html=True)
+        return model, device, True
     except Exception as e:
         st.error(f"Failed to load model: {e}")
+        return None, None, False
+
+def ensure_rf_loaded():
+    """Try to load RetinaFace on first use. Silent if unavailable."""
+    global rf_module, rf_ready
+    if rf_module is not None or rf_ready:
+        return rf_module, rf_ready
+    try:
+        rf_module, rf_ready = load_face_extractor()
+    except Exception:
+        rf_module, rf_ready = None, False
+    return rf_module, rf_ready
+
+# Model path status indicator (no loading yet)
+if os.path.exists(model_path):
+    st.markdown(f"""
+    <div style='background:#0a2d1a;border:1px solid #00e676;border-radius:8px;
+                padding:0.6rem 1rem;margin-bottom:1rem;
+                font-family:Space Mono,monospace;font-size:0.78rem;color:#00e676'>
+        ✓ Model file found: <b>{model_path}</b>
+        &nbsp;·&nbsp; Will load on first analysis &nbsp;·&nbsp; Threshold: {threshold}
+    </div>""", unsafe_allow_html=True)
 else:
-    st.markdown("""
+    st.markdown(f"""
     <div style='background:#2d0a0a;border:1px solid #ff4444;border-radius:8px;
                 padding:0.6rem 1rem;margin-bottom:1rem;
                 font-family:Space Mono,monospace;font-size:0.78rem;color:#ff4444'>
-        ⚠ Model not found — enter path in sidebar
+        ⚠ Model not found at <b>{model_path}</b> — enter correct path in sidebar
     </div>""", unsafe_allow_html=True)
 
 # Mode tabs
@@ -831,29 +839,25 @@ with tab_img:
             img_rgb = np.array(img_pil)
             st.image(img_rgb, caption="Uploaded image", use_column_width=True)
 
-            if model_loaded:
-                if rf_module is None:
-                    with st.spinner("Loading Face Detector..."):
-                        try:
-                            rf_module, rf_ready = load_face_extractor()
-                        except Exception:
-                            rf_module = None
-                            rf_ready  = False
-
-                label, prob_fake, conf, overlay, heatmap, face_det = run_inference(
-                    model, device, img_rgb, threshold, rf_module, rf_ready
-                )
-
-                st.session_state["img_result"] = {
-                    "label":         label,
-                    "prob_fake":     prob_fake,
-                    "conf":          conf,
-                    "overlay":       overlay,
-                    "heatmap":       heatmap,
-                    "original":      np.array(img_pil.resize((299, 299))),
-                    "name":          uploaded.name,
-                    "face_detected": face_det,
-                }
+            if st.button("🔍  Analyse Image", key="btn_img"):
+                _m, _d, _ok = ensure_model_loaded()
+                if _ok:
+                    _rf, _rr = ensure_rf_loaded()
+                    with st.spinner("Running inference..."):
+                        label, prob_fake, conf, overlay, heatmap, face_det = run_inference(
+                            _m, _d, img_rgb, threshold, _rf, _rr
+                        )
+                    st.session_state["img_result"] = {
+                        "label":         label,
+                        "prob_fake":     prob_fake,
+                        "conf":          conf,
+                        "overlay":       overlay,
+                        "heatmap":       heatmap,
+                        "original":      np.array(img_pil.resize((299, 299))),
+                        "name":          uploaded.name,
+                        "face_detected": face_det,
+                    }
+                    st.rerun()
 
     with col_res:
         section("Analysis Result")
@@ -928,149 +932,134 @@ with tab_vid:
         if vid_file:
             st.video(vid_file)
 
-            if model_loaded:
-                if st.button("🔍  Analyse Video", key="btn_vid"):
-                    if rf_module is None:
-                        with st.spinner("Loading Face Detector..."):
-                            try:
-                                rf_module, rf_ready = load_face_extractor()
-                            except Exception:
-                                rf_module = None
-                                rf_ready  = False
+            if st.button("🔍  Analyse Video", key="btn_vid"):
+                _m, _d, _ok = ensure_model_loaded()
+                if not _ok:
+                    st.stop()
+                model, device     = _m, _d
+                rf_module, rf_ready = ensure_rf_loaded()
 
-                    # Save to temp file
-                    with tempfile.NamedTemporaryFile(
-                        delete=False, suffix=".mp4"
-                    ) as tmp:
-                        tmp.write(vid_file.read())
-                        tmp_path = tmp.name
+                # Save to temp file
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+                    tmp.write(vid_file.read())
+                    tmp_path = tmp.name
 
-                    results   = []
-                    progress  = st.progress(0, text="Reading video...")
-                    status    = st.empty()
-                    all_probs = []  # flat list of all face probs
+                results   = []
+                progress  = st.progress(0, text="Reading video...")
+                status    = st.empty()
+                all_probs = []
 
-                    cap          = cv2.VideoCapture(tmp_path)
-                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                cap          = cv2.VideoCapture(tmp_path)
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-                    # ── Video loop ────────────────────────────────
-                    frames_to_process = total_frames // frame_skip
+                # ── Video loop ────────────────────────────────
+                frames_to_process = max(total_frames // frame_skip, 1)
 
-                    for i in range(frames_to_process):
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, i * frame_skip)
-                        ret, frame_bgr = cap.read()
-                        if not ret:
-                            break
+                for i in range(frames_to_process):
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, i * frame_skip)
+                    ret, frame_bgr = cap.read()
+                    if not ret:
+                        break
 
-                        frame_no = i * frame_skip
-                        pct      = int((i + 1) / max(frames_to_process, 1) * 100)
-                        progress.progress(pct, text=f"Frame {frame_no}/{total_frames}")
+                    frame_no = i * frame_skip
+                    pct      = int((i + 1) / frames_to_process * 100)
+                    progress.progress(pct, text=f"Frame {frame_no}/{total_frames}")
 
-                        # Resize before RetinaFace (speed + accuracy)
-                        frame_bgr = cv2.resize(frame_bgr, (640, 360))
-                        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-                        frame_rgb = np.ascontiguousarray(frame_rgb)
+                    frame_bgr = cv2.resize(frame_bgr, (640, 360))
+                    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                    frame_rgb = np.ascontiguousarray(frame_rgb)
 
-                        face_probs   = []
-                        best_overlay = None
-                        best_prob    = 0.0
-                        face_summary = ""
+                    face_probs   = []
+                    best_overlay = None
+                    best_prob    = 0.0
+                    face_summary = ""
 
-                        if rf_ready and rf_module is not None:
-                            try:
-                                img_bgr_rf = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-                                faces      = rf_module.detect_faces(img_bgr_rf)
+                    if rf_ready and rf_module is not None:
+                        try:
+                            img_bgr_rf = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+                            faces      = rf_module.detect_faces(img_bgr_rf)
 
-                                if isinstance(faces, dict) and len(faces) > 0:
-                                    for fid, face_val in faces.items():
-                                        x1, y1, x2, y2 = map(int, face_val["facial_area"])
-                                        face_crop = frame_rgb[y1:y2, x1:x2]
-                                        if face_crop.size == 0:
-                                            continue
+                            if isinstance(faces, dict) and len(faces) > 0:
+                                for fid, face_val in faces.items():
+                                    x1, y1, x2, y2 = map(int, face_val["facial_area"])
+                                    face_crop = frame_rgb[y1:y2, x1:x2]
+                                    if face_crop.size == 0:
+                                        continue
 
-                                        fc = cv2.resize(face_crop, (299, 299))
-                                        fc = fc.astype(np.float32) / 255.0
-                                        fc = (fc - np.array([0.485, 0.456, 0.406])) / \
-                                             np.array([0.229, 0.224, 0.225])
-                                        tensor = (
-                                            torch.from_numpy(np.ascontiguousarray(fc))
-                                            .permute(2, 0, 1)
-                                            .unsqueeze(0)
-                                            .float()
-                                            .to(device)
-                                        )
+                                    fc = cv2.resize(face_crop, (299, 299))
+                                    fc = fc.astype(np.float32) / 255.0
+                                    fc = (fc - np.array([0.485, 0.456, 0.406])) /                                          np.array([0.229, 0.224, 0.225])
+                                    tensor = (
+                                        torch.from_numpy(np.ascontiguousarray(fc))
+                                        .permute(2, 0, 1).unsqueeze(0).float().to(device)
+                                    )
+                                    with torch.no_grad():
+                                        out  = model(tensor)
+                                        prob = torch.sigmoid(out).item()
 
-                                        with torch.no_grad():
-                                            out  = model(tensor)
-                                            prob = torch.sigmoid(out).item()
+                                    face_probs.append(prob)
+                                    all_probs.append(prob)
 
-                                        face_probs.append(prob)
-                                        all_probs.append(prob)
+                                    if prob > best_prob:
+                                        best_prob    = prob
+                                        best_overlay = cv2.resize(face_crop, (299, 299))
 
-                                        if prob > best_prob:
-                                            best_prob    = prob
-                                            best_overlay = cv2.resize(face_crop, (299, 299))
+                                    face_summary += f"{fid}:{prob * 100:.0f}% "
+                        except Exception:
+                            pass
 
-                                        face_summary += f"{fid}:{prob * 100:.0f}% "
-                            except Exception:
-                                pass
-
-                        # Fallback — no faces found
-                        if not face_probs:
-                            fc   = cv2.resize(frame_rgb, (299, 299))
-                            fc_n = fc.astype(np.float32) / 255.0
-                            fc_n = (fc_n - np.array([0.485, 0.456, 0.406])) / \
-                                   np.array([0.229, 0.224, 0.225])
-                            tensor = (
-                                torch.from_numpy(np.ascontiguousarray(fc_n))
-                                .permute(2, 0, 1)
-                                .unsqueeze(0)
-                                .float()
-                                .to(device)
-                            )
-                            with torch.no_grad():
-                                prob = torch.sigmoid(model(tensor)).item()
-                            face_probs.append(prob)
-                            all_probs.append(prob)
-                            best_prob    = prob
-                            best_overlay = cv2.resize(frame_rgb, (299, 299))
-                            face_summary = f"full_frame:{prob * 100:.0f}%"
-
-                        frame_avg = np.mean(face_probs)
-                        label     = "FAKE" if frame_avg >= threshold else "REAL"
-                        conf      = frame_avg if label == "FAKE" else 1 - frame_avg
-
-                        results.append({
-                            "frame_no":     frame_no,
-                            "label":        label,
-                            "prob_fake":    frame_avg,
-                            "conf":         conf,
-                            "original_rgb": cv2.resize(frame_rgb, (299, 299)),
-                            "overlay_rgb":  best_overlay,
-                            "face_summary": face_summary.strip(),
-                            "n_faces":      len(face_probs),
-                        })
-
-                        col = "#ff4444" if label == "FAKE" else "#00e676"
-                        status.markdown(
-                            f"<span style='font-family:Space Mono,monospace;"
-                            f"font-size:0.78rem;color:#9ca3af'>"
-                            f"Frame {frame_no} | {len(face_probs)} face(s) | "
-                            f"<b style='color:{col}'>{label}</b> "
-                            f"{conf * 100:.1f}% | {face_summary}"
-                            f"</span>",
-                            unsafe_allow_html=True
+                    # Fallback — no faces found
+                    if not face_probs:
+                        fc   = cv2.resize(frame_rgb, (299, 299))
+                        fc_n = fc.astype(np.float32) / 255.0
+                        fc_n = (fc_n - np.array([0.485, 0.456, 0.406])) /                                np.array([0.229, 0.224, 0.225])
+                        tensor = (
+                            torch.from_numpy(np.ascontiguousarray(fc_n))
+                            .permute(2, 0, 1).unsqueeze(0).float().to(device)
                         )
+                        with torch.no_grad():
+                            prob = torch.sigmoid(model(tensor)).item()
+                        face_probs.append(prob)
+                        all_probs.append(prob)
+                        best_prob    = prob
+                        best_overlay = cv2.resize(frame_rgb, (299, 299))
+                        face_summary = f"full_frame:{prob * 100:.0f}%"
 
-                    cap.release()
-                    os.unlink(tmp_path)
-                    progress.empty()
-                    status.empty()
+                    frame_avg = np.mean(face_probs)
+                    label     = "FAKE" if frame_avg >= threshold else "REAL"
+                    conf      = frame_avg if label == "FAKE" else 1 - frame_avg
 
-                    st.session_state["vid_results"] = {
-                        "results": results,
-                        "name":    vid_file.name,
-                    }
+                    results.append({
+                        "frame_no":     frame_no,
+                        "label":        label,
+                        "prob_fake":    frame_avg,
+                        "conf":         conf,
+                        "original_rgb": cv2.resize(frame_rgb, (299, 299)),
+                        "overlay_rgb":  best_overlay,
+                        "face_summary": face_summary.strip(),
+                        "n_faces":      len(face_probs),
+                    })
+
+                    col = "#ff4444" if label == "FAKE" else "#00e676"
+                    status.markdown(
+                        f"<span style='font-family:Space Mono,monospace;"
+                        f"font-size:0.78rem;color:#9ca3af'>"
+                        f"Frame {frame_no} | {len(face_probs)} face(s) | "
+                        f"<b style='color:{col}'>{label}</b> "
+                        f"{conf * 100:.1f}% | {face_summary}"
+                        f"</span>",
+                        unsafe_allow_html=True
+                    )
+
+                cap.release()
+                os.unlink(tmp_path)
+                progress.empty()
+                status.empty()
+
+                st.session_state["vid_results"] = {
+                    "results": results,
+                    "name":    vid_file.name,
+                }
 
     with col_vr:
         section("Video Analysis Result")
