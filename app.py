@@ -762,7 +762,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Load RetinaFace
-rf_module, rf_ready = load_face_extractor()
+rf_module = None
+rf_ready = False
 if rf_ready:
     st.markdown("""
     <div style='background:#0a1a2d;border:1px solid #00b4d8;border-radius:8px;
@@ -827,15 +828,14 @@ with tab_img:
             st.image(img_rgb, caption="Uploaded image", use_column_width=True)
 
             if model_loaded:
-                if st.button("🔍  Analyse Image", key="btn_img"):
-                    with st.spinner("Analysing..."):
-                        # Ensure numpy RGB uint8
-                        if not isinstance(img_rgb, np.ndarray):
-                            img_rgb = np.array(img_rgb, dtype=np.uint8)
-                        if img_rgb.shape[2] == 4:
-                            img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_RGBA2RGB)
-                        face_rgb = cv2.resize(img_rgb, (299, 299))
-                        label, prob_fake, conf, overlay, heatmap, face_det = \
+                if rf_module is None:
+                    with st.spinner("Loading Face Detector..."):
+                        try:
+                            rf_module = load_face_extractor()
+                            rf_ready = rf_module is not None
+                        except Exception:
+                            rf_module = None
+                            rf_ready = False
                             run_inference(model, device, face_rgb, threshold,
                                           rf_module, rf_ready)
 
@@ -929,10 +929,19 @@ with tab_vid:
 
             if model_loaded:
                 if st.button("🔍  Analyse Video", key="btn_vid"):
-                    # Save to temp file
-                    with tempfile.NamedTemporaryFile(
-                        delete=False, suffix=".mp4"
-                    ) as tmp:
+                    if rf_module is None:
+                        with st.spinner("Loading Face Detector..."):
+                            try:
+                                rf_module = load_face_extractor()
+                                rf_ready = rf_module is not None
+                            except Exception:
+                                rf_module = None
+                                rf_ready = False
+
+    # Save to temp file
+    with tempfile.NamedTemporaryFile(
+        delete=False, suffix=".mp4"
+    ) as tmp:
                         tmp.write(vid_file.read())
                         tmp_path = tmp.name
 
