@@ -335,22 +335,47 @@ class AttentionXception(nn.Module):
 
 
 # ================================================================
-# CACHED MODEL LOADER
+# CACHED MODEL LOADER  — loads once, stays in memory forever
 # ================================================================
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_model(model_path):
     import time
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model  = AttentionXception()
-    start  = time.time()
-    print("Loading DeepShield model...")
-    state  = torch.load(model_path, map_location=device)
-    print(f"Model loaded in {time.time() - start:.2f} sec")
+
+    # ── 1. Pick best available dtype ────────────────────────────
+    use_half = device == "cuda"          # fp16 only on GPU
+
+    # ── 2. Build model skeleton ──────────────────────────────────
+    model = AttentionXception()
+
+    # ── 3. Load weights — weights_only=True is faster & safer ───
+    start = time.time()
+    state = torch.load(model_path, map_location=device,
+                       weights_only=True)
     if "model_state_dict" in state:
         state = state["model_state_dict"]
     model.load_state_dict(state)
+
+    # ── 4. Move to device & optimise ────────────────────────────
     model.to(device)
+    if use_half:
+        model.half()                     # fp16 on GPU → 2x faster
     model.eval()
+
+    # ── 5. Disable gradient tracking globally for this model ────
+    for p in model.parameters():
+        p.requires_grad_(False)
+
+    # ── 6. Warmup pass — JIT-compiles internal kernels ──────────
+    #    so the FIRST real image is fast, not slow
+    dummy = torch.zeros(1, 3, 299, 299, device=device)
+    if use_half:
+        dummy = dummy.half()
+    with torch.inference_mode():
+        _ = model(dummy)
+
+    elapsed = time.time() - start
+    print(f"[DeepShield] Model ready in {elapsed:.2f}s on {device.upper()}")
     return model, device
 
 
@@ -764,30 +789,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Lazy loaders — @st.cache_resource handles persistence across reruns ──
-def ensure_model_loaded():
-    """Returns (model, device, ok). Uses st.cache_resource internally."""
-    if not os.path.exists(model_path):
-        st.error(f"⚠ Model file not found at '{model_path}' — check the path in the sidebar.")
-        return None, None, False
-    try:
-        m, d = load_model(model_path)
-        return m, d, True
-    except Exception as e:
-        st.error(f"Failed to load model: {e}")
-        return None, None, False
-
-def ensure_rf_loaded():
-    """Try to load RetinaFace. Returns (module, ready). Silent if unavailable."""
-    try:
-        mod, ready = load_face_extractor()
-        return mod, ready
-    except Exception:
-        return None, False
-
-# Model status banner — check cache without triggering a load
-_model_cached = load_model.cache_info() if hasattr(load_model, "cache_info") else None
-_already_loaded = st.session_state.get("_model_ready", False)
+# ================================================================
+# STARTUP — load model immediately, show spinner in UI
+# ================================================================
+_model_ok  = False
+_model     = None
+_device    = None
 
 if not os.path.exists(model_path):
     st.markdown(f"""
@@ -796,21 +803,30 @@ if not os.path.exists(model_path):
                 font-family:Space Mono,monospace;font-size:0.78rem;color:#ff4444'>
         ⚠ Model not found at <b>{model_path}</b> — enter correct path in sidebar
     </div>""", unsafe_allow_html=True)
-elif _already_loaded:
-    st.markdown(f"""
-    <div style='background:#0a2d1a;border:1px solid #00e676;border-radius:8px;
-                padding:0.6rem 1rem;margin-bottom:1rem;
-                font-family:Space Mono,monospace;font-size:0.78rem;color:#00e676'>
-        ✓ Model loaded &nbsp;·&nbsp; Threshold: {threshold}
-    </div>""", unsafe_allow_html=True)
 else:
-    st.markdown(f"""
-    <div style='background:#0a2d1a;border:1px solid #00e676;border-radius:8px;
-                padding:0.6rem 1rem;margin-bottom:1rem;
-                font-family:Space Mono,monospace;font-size:0.78rem;color:#00e676'>
-        ✓ Model file found: <b>{model_path}</b>
-        &nbsp;·&nbsp; Will load on first analysis &nbsp;·&nbsp; Threshold: {threshold}
-    </div>""", unsafe_allow_html=True)
+    with st.spinner("⚡ Loading DeepShield model into memory..."):
+        try:
+            _model, _device = load_model(model_path)
+            _model_ok = True
+        except Exception as _e:
+            st.error(f"Failed to load model: {_e}")
+
+    if _model_ok:
+        st.markdown(f"""
+        <div style='background:#0a2d1a;border:1px solid #00e676;border-radius:8px;
+                    padding:0.6rem 1rem;margin-bottom:1rem;
+                    font-family:Space Mono,monospace;font-size:0.78rem;color:#00e676'>
+            ✓ Model ready &nbsp;·&nbsp; Device: <b>{_device.upper()}</b>
+            &nbsp;·&nbsp; Threshold: {threshold}
+            &nbsp;·&nbsp; Upload an image or video to begin
+        </div>""", unsafe_allow_html=True)
+
+# RetinaFace — attempt silently, fallback to full frame if missing
+_rf_module, _rf_ready = None, False
+try:
+    _rf_module, _rf_ready = load_face_extractor()
+except Exception:
+    pass
 
 # Mode tabs
 tab_img, tab_vid = st.tabs(["🖼  Image", "🎬  Video"])
@@ -837,16 +853,13 @@ with tab_img:
             st.image(img_rgb, caption="Uploaded image", use_column_width=True)
 
             if st.button("🔍  Analyse Image", key="btn_img"):
-                with st.spinner("Loading model..." if not st.session_state.get("_model_ready") else "Running inference..."):
-                    _m, _d, _ok = ensure_model_loaded()
-                if not _ok:
-                    st.error("Could not load model. Check path in sidebar.")
+                if not _model_ok:
+                    st.error("Model not loaded — check path in sidebar.")
                 else:
-                    st.session_state["_model_ready"] = True
-                    _rf, _rr = ensure_rf_loaded()
                     with st.spinner("Analysing image..."):
                         label, prob_fake, conf, overlay, heatmap, face_det = run_inference(
-                            _m, _d, img_rgb, threshold, _rf, _rr
+                            _model, _device, img_rgb, threshold,
+                            _rf_module, _rf_ready
                         )
                     st.session_state["img_result"] = {
                         "label":         label,
@@ -933,14 +946,11 @@ with tab_vid:
             st.video(vid_file)
 
             if st.button("🔍  Analyse Video", key="btn_vid"):
-                with st.spinner("Loading model..." if not st.session_state.get("_model_ready") else "Preparing..."):
-                    _m, _d, _ok = ensure_model_loaded()
-                if not _ok:
-                    st.error("Could not load model. Check path in sidebar.")
+                if not _model_ok:
+                    st.error("Model not loaded — check path in sidebar.")
                     st.stop()
-                st.session_state["_model_ready"] = True
-                model, device       = _m, _d
-                rf_module, rf_ready = ensure_rf_loaded()
+                model, device       = _model, _device
+                rf_module, rf_ready = _rf_module, _rf_ready
 
                 # Save to temp file
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
