@@ -9,7 +9,6 @@ Run:
 Requirements:
     pip install streamlit timm opencv-python-headless
                 torch torchvision matplotlib pillow
-                reportlab tqdm
 ================================================================
 """
 
@@ -32,6 +31,13 @@ from PIL import Image
 
 warnings.filterwarnings("ignore")
 
+# Pre-build matplotlib font cache silently so it never blocks the UI
+import matplotlib.font_manager as _fmgr
+try:
+    _fmgr._load_fontmanager(try_read_cache=False)
+except Exception:
+    pass
+
 # ================================================================
 # PAGE CONFIG  — must be first Streamlit call
 # ================================================================
@@ -49,26 +55,16 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
 
-html, body, [class*="css"] {
-    font-family: 'Syne', sans-serif;
-}
+html, body, [class*="css"] { font-family: 'Syne', sans-serif; }
 
-/* Dark background */
-.stApp {
-    background-color: #0d0f1a;
-    color: #e8e8f0;
-}
+.stApp { background-color: #0d0f1a; color: #e8e8f0; }
 
-/* Sidebar */
 [data-testid="stSidebar"] {
     background-color: #12152a;
     border-right: 1px solid #1e2340;
 }
-[data-testid="stSidebar"] * {
-    color: #e8e8f0 !important;
-}
+[data-testid="stSidebar"] * { color: #e8e8f0 !important; }
 
-/* Main title */
 .main-title {
     font-family: 'Syne', sans-serif;
     font-weight: 800;
@@ -81,7 +77,6 @@ html, body, [class*="css"] {
     margin: 0;
     line-height: 1.1;
 }
-
 .subtitle {
     font-family: 'Space Mono', monospace;
     font-size: 0.85rem;
@@ -90,180 +85,87 @@ html, body, [class*="css"] {
     text-transform: uppercase;
     margin-top: 0.4rem;
 }
-
-/* Verdict cards */
 .verdict-fake {
     background: linear-gradient(135deg, #2d0a0a, #4a0f0f);
-    border: 1px solid #ff4444;
-    border-radius: 16px;
-    padding: 2rem;
-    text-align: center;
-    box-shadow: 0 0 40px rgba(255, 68, 68, 0.2);
+    border: 1px solid #ff4444; border-radius: 16px;
+    padding: 2rem; text-align: center;
+    box-shadow: 0 0 40px rgba(255,68,68,0.2);
 }
-
 .verdict-real {
     background: linear-gradient(135deg, #0a2d1a, #0f4a24);
-    border: 1px solid #00e676;
-    border-radius: 16px;
-    padding: 2rem;
-    text-align: center;
-    box-shadow: 0 0 40px rgba(0, 230, 118, 0.2);
+    border: 1px solid #00e676; border-radius: 16px;
+    padding: 2rem; text-align: center;
+    box-shadow: 0 0 40px rgba(0,230,118,0.2);
 }
-
 .verdict-label-fake {
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 3.5rem;
-    color: #ff4444;
-    letter-spacing: 0.1em;
-    margin: 0;
+    font-family: 'Syne', sans-serif; font-weight: 800;
+    font-size: 3.5rem; color: #ff4444;
+    letter-spacing: 0.1em; margin: 0;
 }
-
 .verdict-label-real {
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 3.5rem;
-    color: #00e676;
-    letter-spacing: 0.1em;
-    margin: 0;
+    font-family: 'Syne', sans-serif; font-weight: 800;
+    font-size: 3.5rem; color: #00e676;
+    letter-spacing: 0.1em; margin: 0;
 }
-
 .confidence-text {
     font-family: 'Space Mono', monospace;
-    font-size: 1.1rem;
-    color: #9ca3af;
-    margin-top: 0.5rem;
+    font-size: 1.1rem; color: #9ca3af; margin-top: 0.5rem;
 }
-
-/* Metric cards */
 .metric-card {
-    background: #12152a;
-    border: 1px solid #1e2340;
-    border-radius: 12px;
-    padding: 1.2rem 1.5rem;
-    margin-bottom: 0.8rem;
+    background: #12152a; border: 1px solid #1e2340;
+    border-radius: 12px; padding: 1.2rem 1.5rem; margin-bottom: 0.8rem;
 }
-
 .metric-label {
-    font-family: 'Space Mono', monospace;
-    font-size: 0.7rem;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    margin-bottom: 0.3rem;
+    font-family: 'Space Mono', monospace; font-size: 0.7rem;
+    color: #6b7280; text-transform: uppercase;
+    letter-spacing: 0.12em; margin-bottom: 0.3rem;
 }
-
 .metric-value {
-    font-family: 'Syne', sans-serif;
-    font-weight: 600;
-    font-size: 1.6rem;
-    color: #e8e8f0;
+    font-family: 'Syne', sans-serif; font-weight: 600;
+    font-size: 1.6rem; color: #e8e8f0;
 }
-
-/* Progress bar custom */
 .prob-bar-wrap {
-    background: #1e2340;
-    border-radius: 8px;
-    height: 10px;
-    width: 100%;
-    margin-top: 0.5rem;
-    overflow: hidden;
+    background: #1e2340; border-radius: 8px;
+    height: 10px; width: 100%; margin-top: 0.5rem; overflow: hidden;
 }
-
 .prob-bar-fill-fake {
-    height: 100%;
-    border-radius: 8px;
+    height: 100%; border-radius: 8px;
     background: linear-gradient(90deg, #ff4444, #ff8c00);
-    transition: width 0.8s ease;
 }
-
 .prob-bar-fill-real {
-    height: 100%;
-    border-radius: 8px;
+    height: 100%; border-radius: 8px;
     background: linear-gradient(90deg, #00e676, #00b4d8);
-    transition: width 0.8s ease;
 }
-
-/* Section headers */
 .section-header {
-    font-family: 'Space Mono', monospace;
-    font-size: 0.75rem;
-    color: #7b61ff;
-    text-transform: uppercase;
-    letter-spacing: 0.2em;
-    border-bottom: 1px solid #1e2340;
-    padding-bottom: 0.5rem;
-    margin-bottom: 1.2rem;
-    margin-top: 1.5rem;
+    font-family: 'Space Mono', monospace; font-size: 0.75rem;
+    color: #7b61ff; text-transform: uppercase; letter-spacing: 0.2em;
+    border-bottom: 1px solid #1e2340; padding-bottom: 0.5rem;
+    margin-bottom: 1.2rem; margin-top: 1.5rem;
 }
-
-/* Upload area */
 [data-testid="stFileUploader"] {
-    background: #12152a;
-    border: 2px dashed #1e2340;
-    border-radius: 12px;
-    transition: border-color 0.2s;
+    background: #12152a; border: 2px dashed #1e2340; border-radius: 12px;
 }
-
-[data-testid="stFileUploader"]:hover {
-    border-color: #7b61ff;
-}
-
-/* Buttons */
+[data-testid="stFileUploader"]:hover { border-color: #7b61ff; }
 .stButton > button {
     background: linear-gradient(135deg, #7b61ff, #00d4ff);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-family: 'Space Mono', monospace;
-    font-size: 0.85rem;
-    letter-spacing: 0.05em;
-    padding: 0.6rem 2rem;
-    width: 100%;
-    transition: opacity 0.2s;
+    color: white; border: none; border-radius: 8px;
+    font-family: 'Space Mono', monospace; font-size: 0.85rem;
+    padding: 0.6rem 2rem; width: 100%;
 }
-
-.stButton > button:hover {
-    opacity: 0.85;
-}
-
-/* Radio / selectbox */
-.stRadio > label, .stSelectbox > label {
-    font-family: 'Space Mono', monospace;
-    font-size: 0.75rem;
-    color: #6b7280 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-}
-
-/* Divider */
-hr {
-    border-color: #1e2340;
-    margin: 1.5rem 0;
-}
-
-/* Frame analysis table */
+.stButton > button:hover { opacity: 0.85; }
+hr { border-color: #1e2340; margin: 1.5rem 0; }
 .frame-row-fake {
-    background: rgba(255, 68, 68, 0.08);
-    border-left: 3px solid #ff4444;
-    padding: 0.5rem 1rem;
-    margin-bottom: 0.3rem;
+    background: rgba(255,68,68,0.08); border-left: 3px solid #ff4444;
+    padding: 0.5rem 1rem; margin-bottom: 0.3rem;
     border-radius: 0 6px 6px 0;
-    font-family: 'Space Mono', monospace;
-    font-size: 0.8rem;
+    font-family: 'Space Mono', monospace; font-size: 0.8rem;
 }
-
 .frame-row-real {
-    background: rgba(0, 230, 118, 0.05);
-    border-left: 3px solid #00e676;
-    padding: 0.5rem 1rem;
-    margin-bottom: 0.3rem;
+    background: rgba(0,230,118,0.05); border-left: 3px solid #00e676;
+    padding: 0.5rem 1rem; margin-bottom: 0.3rem;
     border-radius: 0 6px 6px 0;
-    font-family: 'Space Mono', monospace;
-    font-size: 0.8rem;
+    font-family: 'Space Mono', monospace; font-size: 0.8rem;
 }
-
-/* Hide streamlit default elements */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 .stDeployButton {display: none;}
@@ -272,7 +174,7 @@ footer {visibility: hidden;}
 
 
 # ================================================================
-# MODEL ARCHITECTURE  (identical to training)
+# MODEL ARCHITECTURE
 # ================================================================
 class ChannelAttention(nn.Module):
     def __init__(self, in_channels, reduction=16):
@@ -335,136 +237,54 @@ class AttentionXception(nn.Module):
 
 
 # ================================================================
-# CACHED MODEL LOADER  — loads once, stays in memory forever
+# MODEL LOADER — cached forever, loads once on startup
 # ================================================================
 @st.cache_resource(show_spinner=False)
 def load_model(model_path):
     import time
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    model  = AttentionXception()
 
-    # ── 1. Pick best available dtype ────────────────────────────
-    use_half = device == "cuda"          # fp16 only on GPU
-
-    # ── 2. Build model skeleton ──────────────────────────────────
-    model = AttentionXception()
-
-    # ── 3. Load weights — weights_only=True is faster & safer ───
     start = time.time()
-    state = torch.load(model_path, map_location=device,
-                       weights_only=True)
+
+    # Try weights_only=True first (safer/faster), fall back for older .pth files
+    # that contain custom Python objects pickled into the checkpoint.
+    try:
+        state = torch.load(model_path, map_location=device, weights_only=True)
+    except Exception:
+        state = torch.load(model_path, map_location=device, weights_only=False)
+
     if "model_state_dict" in state:
         state = state["model_state_dict"]
-    model.load_state_dict(state)
 
-    # ── 4. Move to device & optimise ────────────────────────────
+    model.load_state_dict(state)
     model.to(device)
-    if use_half:
-        model.half()                     # fp16 on GPU → 2x faster
     model.eval()
 
-    # ── 5. Disable gradient tracking globally for this model ────
-    for p in model.parameters():
-        p.requires_grad_(False)
-
-    # ── 6. Warmup pass — JIT-compiles internal kernels ──────────
-    #    so the FIRST real image is fast, not slow
-    dummy = torch.zeros(1, 3, 299, 299, device=device)
-    if use_half:
-        dummy = dummy.half()
-    with torch.inference_mode():
+    # Warmup pass so first real image is instant.
+    # Uses no_grad here only — GradCAM calls use enable_grad() inside generate().
+    with torch.no_grad():
+        dummy = torch.zeros(1, 3, 299, 299, device=device)
         _ = model(dummy)
 
-    elapsed = time.time() - start
-    print(f"[DeepShield] Model ready in {elapsed:.2f}s on {device.upper()}")
+    print(f"[DeepShield] Model ready in {time.time()-start:.2f}s on {device.upper()}")
     return model, device
 
 
 # ================================================================
-# FACE EXTRACTION  (RetinaFace with fallback to full frame)
+# FACE EXTRACTOR (RetinaFace — optional, falls back to full frame)
 # ================================================================
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_face_extractor():
-    import time
-    start = time.time()
-    print("Loading RetinaFace...")
     try:
         from retinaface import RetinaFace
-        print(f"RetinaFace loaded in {time.time() - start:.2f} sec")
         return RetinaFace, True
-    except Exception as e:
-        print(f"RetinaFace error: {e}")
+    except Exception:
         return None, False
 
 
-def extract_face(img_rgb, rf_module, rf_ready, conf_thresh=0.90, margin=0.30):
-    """
-    Uses RetinaFace to detect and crop the largest face.
-    Falls back to full frame if no face found.
-    """
-    h, w = img_rgb.shape[:2]
-
-    if rf_ready and rf_module is not None:
-        try:
-            img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-            faces   = rf_module.detect_faces(img_bgr, threshold=conf_thresh)
-
-            if isinstance(faces, dict) and len(faces) > 0:
-                best, best_area = None, -1
-                for val in faces.values():
-                    x1, y1, x2, y2 = val["facial_area"]
-                    area = (x2 - x1) * (y2 - y1)
-                    if area > best_area:
-                        best_area = area
-                        best      = val
-
-                if best is not None:
-                    x1, y1, x2, y2 = best["facial_area"]
-                    dw = int((x2 - x1) * margin)
-                    dh = int((y2 - y1) * margin)
-                    x1 = max(0, x1 - dw); y1 = max(0, y1 - dh)
-                    x2 = min(w, x2 + dw); y2 = min(h, y2 + dh)
-                    face = img_rgb[y1:y2, x1:x2]
-                    if face.size > 0:
-                        return cv2.resize(face, (299, 299)), True
-        except Exception:
-            pass
-
-    return cv2.resize(img_rgb, (299, 299)), False
-
-
-def extract_all_faces(img_rgb, rf_module, rf_ready, conf_thresh=0.90, margin=0.30):
-    """
-    Uses RetinaFace to detect ALL faces in a frame.
-    Returns list of (face_rgb 299x299, face_id, score).
-    Falls back to [(full_frame, 'full_frame', 0.0)] if none found.
-    """
-    h, w   = img_rgb.shape[:2]
-    result = []
-
-    if rf_ready and rf_module is not None:
-        try:
-            img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-            faces   = rf_module.detect_faces(img_bgr, threshold=conf_thresh)
-
-            if isinstance(faces, dict) and len(faces) > 0:
-                for fid, val in faces.items():
-                    x1, y1, x2, y2 = val["facial_area"]
-                    dw  = int((x2 - x1) * margin)
-                    dh  = int((y2 - y1) * margin)
-                    x1c = max(0, x1 - dw); y1c = max(0, y1 - dh)
-                    x2c = min(w, x2 + dw); y2c = min(h, y2 + dh)
-                    face = img_rgb[y1c:y2c, x1c:x2c]
-                    if face.size > 0:
-                        face = cv2.resize(face, (299, 299))
-                        result.append((face, fid, float(val.get("score", 0))))
-                if result:
-                    return result
-        except Exception:
-            pass
-
-    return [(cv2.resize(img_rgb, (299, 299)), "full_frame", 0.0)]
-
-
+# ================================================================
+# PREPROCESSING
 # ================================================================
 MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 STD  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
@@ -483,36 +303,101 @@ def preprocess(img_rgb, device, size=299):
     img = (img - MEAN) / STD
     return (
         torch.from_numpy(np.ascontiguousarray(img))
-        .permute(2, 0, 1)
-        .unsqueeze(0)
-        .float()
-        .to(device)
+        .permute(2, 0, 1).unsqueeze(0).float().to(device)
     )
 
 
+def preprocess_face_crop(face_bgr_or_rgb, device):
+    """Fast preprocess for an already-cropped face numpy array."""
+    fc = cv2.resize(face_bgr_or_rgb, (299, 299)).astype(np.float32) / 255.0
+    fc = (fc - MEAN) / STD
+    return (
+        torch.from_numpy(np.ascontiguousarray(fc))
+        .permute(2, 0, 1).unsqueeze(0).float().to(device)
+    )
+
+
+# ================================================================
+# FACE DETECTION
+# ================================================================
+def extract_face(img_rgb, rf_module, rf_ready, margin=0.30):
+    """Crop largest face. Falls back to full frame."""
+    h, w = img_rgb.shape[:2]
+    if rf_ready and rf_module is not None:
+        try:
+            img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+            faces   = rf_module.detect_faces(img_bgr, threshold=0.90)
+            if isinstance(faces, dict) and faces:
+                best, best_area = None, -1
+                for val in faces.values():
+                    x1, y1, x2, y2 = val["facial_area"]
+                    area = (x2 - x1) * (y2 - y1)
+                    if area > best_area:
+                        best_area, best = area, val
+                if best:
+                    x1, y1, x2, y2 = best["facial_area"]
+                    dw = int((x2 - x1) * margin)
+                    dh = int((y2 - y1) * margin)
+                    x1 = max(0, x1 - dw); y1 = max(0, y1 - dh)
+                    x2 = min(w, x2 + dw); y2 = min(h, y2 + dh)
+                    face = img_rgb[y1:y2, x1:x2]
+                    if face.size > 0:
+                        return cv2.resize(face, (299, 299)), True
+        except Exception:
+            pass
+    return cv2.resize(img_rgb, (299, 299)), False
+
+
+# ================================================================
+# GRAD-CAM
+# FIX: torch.enable_grad() context manager added inside generate()
+#      so GradCAM works correctly even if the caller is inside a
+#      torch.no_grad() block (e.g. Streamlit reruns, future refactors).
+# ================================================================
 class GradCAM:
+    """
+    Registers hooks on the CBAM spatial conv layer.
+    generate() explicitly enables grad via torch.enable_grad(),
+    making it safe to call from any context — no_grad or otherwise.
+    """
     def __init__(self, model):
         self.model       = model
         self.gradients   = None
         self.activations = None
         self._hooks      = []
-        t = model.cbam.spatial.conv
-        self._hooks.append(t.register_forward_hook(
+        target = model.cbam.spatial.conv
+        self._hooks.append(target.register_forward_hook(
             lambda m, i, o: setattr(self, "activations", o.detach())))
-        self._hooks.append(t.register_full_backward_hook(
+        self._hooks.append(target.register_full_backward_hook(
             lambda m, gi, go: setattr(self, "gradients", go[0].detach())))
 
     def generate(self, tensor):
-        self.model.zero_grad()
-        out = self.model(tensor)
-        out.backward(torch.ones_like(out))
-        w   = self.gradients.mean(dim=[2, 3], keepdim=True)
-        cam = torch.relu((w * self.activations).sum(1)).squeeze()
-        cam = cam.cpu().numpy()
-        cam -= cam.min()
-        if cam.max() > 0:
-            cam /= cam.max()
-        return cam, torch.sigmoid(out).item()
+        # FIX: explicitly enable gradients so GradCAM works regardless of
+        # any outer torch.no_grad() context that may have been set upstream.
+        with torch.enable_grad():
+            self.model.zero_grad()
+            self.model.eval()          # keep BN/Dropout in eval mode
+            out = self.model(tensor)
+            out.backward(torch.ones_like(out))
+
+        if self.gradients is None:
+            # Fallback: return blank cam — avoids crash if hooks misfired
+            cam = np.zeros((10, 10), dtype=np.float32)
+        else:
+            w   = self.gradients.mean(dim=[2, 3], keepdim=True)
+            cam = torch.relu((w * self.activations).sum(1)).squeeze()
+
+            # FIX: guard against 0-d tensor when spatial dims collapse to 1×1
+            if cam.dim() == 0:
+                cam = cam.unsqueeze(0).unsqueeze(0).expand(10, 10)
+
+            cam = cam.cpu().numpy()
+            cam -= cam.min()
+            if cam.max() > 0:
+                cam /= cam.max()
+
+        prob = torch.sigmoid(out).item()
+        return cam, prob
 
     def remove(self):
         for h in self._hooks:
@@ -528,84 +413,89 @@ def make_overlay(face_rgb, cam):
     return overlay, heat
 
 
+# ================================================================
+# INFERENCE — IMAGE
+# ================================================================
 def run_inference(model, device, img_rgb, threshold=0.5,
                   rf_module=None, rf_ready=False):
-    """
-    Full pipeline:
-      RetinaFace face crop -> preprocess -> infer -> GradCAM -> overlay
-    """
     face_rgb, face_detected = extract_face(img_rgb, rf_module, rf_ready)
+    tensor                  = preprocess(face_rgb, device)
 
+    # GradCAM.generate() handles enable_grad() internally — safe to call here
     gcam             = GradCAM(model)
-    tensor           = preprocess(face_rgb, device)
     cam, prob_fake   = gcam.generate(tensor)
-    overlay, heatmap = make_overlay(face_rgb, cam)
-    label            = "FAKE" if prob_fake >= threshold else "REAL"
-    conf             = prob_fake if label == "FAKE" else 1 - prob_fake
     gcam.remove()
+
+    overlay, heatmap = make_overlay(face_rgb, cam)
+    label = "FAKE" if prob_fake >= threshold else "REAL"
+    conf  = prob_fake if label == "FAKE" else 1 - prob_fake
     return label, prob_fake, conf, overlay, heatmap, face_detected
+
+
+# ================================================================
+# INFERENCE — single frame (no GradCAM, faster for video)
+# ================================================================
+def infer_frame(model, device, face_rgb):
+    fc = cv2.resize(face_rgb, (299, 299)).astype(np.float32) / 255.0
+    fc = (fc - MEAN) / STD
+    tensor = (
+        torch.from_numpy(np.ascontiguousarray(fc))
+        .permute(2, 0, 1).unsqueeze(0).float().to(device)
+    )
+    with torch.no_grad():
+        prob = torch.sigmoid(model(tensor)).item()
+    return prob
 
 
 # ================================================================
 # PDF REPORT
 # ================================================================
 def generate_pdf(results, mode, source_name, threshold):
-    buf = io.BytesIO()
-    ts  = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    buf          = io.BytesIO()
+    ts           = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     fakes        = [r for r in results if r["label"] == "FAKE"]
     reals        = [r for r in results if r["label"] == "REAL"]
     fake_pct     = 100 * len(fakes) / max(len(results), 1)
     avg_prob_raw = np.mean([r["prob_fake"] for r in results])
-    avg_prob     = avg_prob_raw * 100
     verdict      = "FAKE" if avg_prob_raw >= threshold else "REAL"
     vcolor       = "#e74c3c" if verdict == "FAKE" else "#2ecc71"
 
     with PdfPages(buf) as pdf:
-        # ── Page 1: Summary ──────────────────────────────────────
+        # Page 1 — summary
         fig = plt.figure(figsize=(11, 8.5))
         fig.patch.set_facecolor("#0d0f1a")
-
         fig.text(0.5, 0.94, "DeepShield — Detection Report",
                  ha="center", fontsize=20, fontweight="bold", color="white")
         fig.text(0.5, 0.90, f"Generated: {ts}  |  Source: {source_name}",
                  ha="center", fontsize=10, color="#6b7280")
 
-        # Verdict box
         ax_v = fig.add_axes([0.32, 0.64, 0.36, 0.20])
         ax_v.set_facecolor(vcolor + "33")
-        for spine in ax_v.spines.values():
-            spine.set_edgecolor(vcolor)
-            spine.set_linewidth(2)
+        for sp in ax_v.spines.values():
+            sp.set_edgecolor(vcolor); sp.set_linewidth(2)
         ax_v.text(0.5, 0.65, verdict, transform=ax_v.transAxes,
                   ha="center", va="center", fontsize=38,
                   fontweight="bold", color=vcolor)
         conf_val = (
-            np.mean([r["prob_fake"] for r in fakes]) * 100
-            if fakes
+            np.mean([r["prob_fake"] for r in fakes]) * 100 if fakes
             else (1 - np.mean([r["prob_fake"] for r in reals])) * 100
         )
         ax_v.text(0.5, 0.22, f"Confidence: {conf_val:.1f}%",
-                  transform=ax_v.transAxes, ha="center",
-                  fontsize=13, color="white")
+                  transform=ax_v.transAxes, ha="center", fontsize=13, color="white")
         ax_v.axis("off")
 
-        # Stats table
         stats = [
-            ("Mode",                "MODE.UPPER()"),
-            ("Frames analysed",     str(len(results))),
-            ("Fake frames",         f"{len(fakes)} ({fake_pct:.1f}%)"),
-            ("Real frames",         f"{len(reals)} ({100 - fake_pct:.1f}%)"),
-            ("Avg fake probability",f"{avg_prob:.2f}%"),
-            ("Decision threshold",  f"{threshold * 100:.0f}%"),
-            ("Model",               "Attention-Xception + CBAM"),
-            ("Dataset",             "Balanced (31,949 Real + 31,949 Fake)"),
-            ("Test accuracy",       "98.67%"),
-            ("ROC-AUC",             "0.9990"),
+            ("Mode",                 mode.upper()),
+            ("Frames analysed",      str(len(results))),
+            ("Fake frames",          f"{len(fakes)} ({fake_pct:.1f}%)"),
+            ("Real frames",          f"{len(reals)} ({100-fake_pct:.1f}%)"),
+            ("Avg fake probability", f"{avg_prob_raw*100:.2f}%"),
+            ("Decision threshold",   f"{threshold*100:.0f}%"),
+            ("Model",                "Attention-Xception + CBAM"),
+            ("Dataset",              "Balanced (31,949 Real + 31,949 Fake)"),
+            ("Test accuracy",        "98.67%"),
+            ("ROC-AUC",              "0.9990"),
         ]
-        # Fix: use actual mode variable, not string literal
-        stats[0] = ("Mode", mode.upper())
-
         y = 0.58
         for k, v in stats:
             fig.text(0.18, y, f"{k}:", fontsize=10, color="#9ca3af", ha="left")
@@ -613,7 +503,6 @@ def generate_pdf(results, mode, source_name, threshold):
                      ha="left", fontweight="bold")
             y -= 0.048
 
-        # Timeline chart
         if len(results) > 1:
             ax_t = fig.add_axes([0.08, 0.06, 0.84, 0.16])
             ax_t.set_facecolor("#12152a")
@@ -623,12 +512,10 @@ def generate_pdf(results, mode, source_name, threshold):
             ax_t.bar(fn, pb, color=cols,
                      width=max(fn) / max(len(fn), 1) * 0.8)
             ax_t.axhline(50, color="white", ls="--", lw=0.8, alpha=0.4)
-            ax_t.set_xlabel("Frame",    color="#9ca3af", fontsize=8)
-            ax_t.set_ylabel("Fake %",   color="#9ca3af", fontsize=8)
-            ax_t.set_title("Per-Frame Fake Probability",
-                           color="white", fontsize=9)
+            ax_t.set_xlabel("Frame", color="#9ca3af", fontsize=8)
+            ax_t.set_ylabel("Fake %", color="#9ca3af", fontsize=8)
+            ax_t.set_title("Per-Frame Fake Probability", color="white", fontsize=9)
             ax_t.tick_params(colors="#9ca3af", labelsize=7)
-            ax_t.set_facecolor("#12152a")
             ax_t.set_ylim([0, 105])
             for sp in ax_t.spines.values():
                 sp.set_edgecolor("#1e2340")
@@ -636,38 +523,30 @@ def generate_pdf(results, mode, source_name, threshold):
         pdf.savefig(fig, facecolor=fig.get_facecolor())
         plt.close()
 
-        # ── Page 2+: Frame samples ────────────────────────────────
+        # Page 2+ — frame samples
         sorted_f = sorted(results, key=lambda x: x["prob_fake"], reverse=True)
         sorted_r = sorted(results, key=lambda x: x["prob_fake"])
-        samples  = sorted(sorted_f[:4] + sorted_r[:2],
-                          key=lambda x: x["frame_no"])
+        samples  = sorted(sorted_f[:4] + sorted_r[:2], key=lambda x: x["frame_no"])
 
         for i in range(0, len(samples), 2):
-            batch = samples[i:i + 2]
+            batch = samples[i:i+2]
             fig   = plt.figure(figsize=(11, 8.5))
             fig.patch.set_facecolor("#0d0f1a")
             fig.text(0.5, 0.97, "Frame Analysis — Original | Grad-CAM Overlay",
                      ha="center", fontsize=12, color="white", fontweight="bold")
-
             for j, r in enumerate(batch):
                 top = 0.50 - j * 0.47
                 c   = "#e74c3c" if r["label"] == "FAKE" else "#2ecc71"
                 cf  = r["prob_fake"] if r["label"] == "FAKE" else 1 - r["prob_fake"]
-
                 ax1 = fig.add_axes([0.05, top, 0.42, 0.40])
-                ax1.imshow(r["original_rgb"])
-                ax1.axis("off")
+                ax1.imshow(r["original_rgb"]); ax1.axis("off")
                 ax1.set_title(
-                    f"Frame {r['frame_no']} — {r['label']}  {cf * 100:.1f}%",
+                    f"Frame {r['frame_no']} — {r['label']}  {cf*100:.1f}%",
                     color=c, fontsize=11, fontweight="bold", pad=5
                 )
-
                 ax2 = fig.add_axes([0.53, top, 0.42, 0.40])
-                ax2.imshow(r["overlay_rgb"])
-                ax2.axis("off")
-                ax2.set_title("Grad-CAM Attention",
-                              color="white", fontsize=11, pad=5)
-
+                ax2.imshow(r["overlay_rgb"]); ax2.axis("off")
+                ax2.set_title("Grad-CAM Attention", color="white", fontsize=11, pad=5)
             pdf.savefig(fig, facecolor=fig.get_facecolor())
             plt.close()
 
@@ -683,24 +562,24 @@ def render_verdict(label, conf, prob_fake):
         st.markdown(f"""
         <div class="verdict-fake">
             <p class="verdict-label-fake">⚠ FAKE</p>
-            <p class="confidence-text">Confidence: {conf * 100:.1f}%</p>
+            <p class="confidence-text">Confidence: {conf*100:.1f}%</p>
             <div class="prob-bar-wrap">
-                <div class="prob-bar-fill-fake" style="width:{prob_fake * 100:.1f}%"></div>
+                <div class="prob-bar-fill-fake" style="width:{prob_fake*100:.1f}%"></div>
             </div>
             <p class="confidence-text" style="font-size:0.8rem;margin-top:0.3rem">
-                Fake probability: {prob_fake * 100:.2f}%
+                Fake probability: {prob_fake*100:.2f}%
             </p>
         </div>""", unsafe_allow_html=True)
     else:
         st.markdown(f"""
         <div class="verdict-real">
             <p class="verdict-label-real">✓ REAL</p>
-            <p class="confidence-text">Confidence: {conf * 100:.1f}%</p>
+            <p class="confidence-text">Confidence: {conf*100:.1f}%</p>
             <div class="prob-bar-wrap">
-                <div class="prob-bar-fill-real" style="width:{conf * 100:.1f}%"></div>
+                <div class="prob-bar-fill-real" style="width:{conf*100:.1f}%"></div>
             </div>
             <p class="confidence-text" style="font-size:0.8rem;margin-top:0.3rem">
-                Real probability: {(1 - prob_fake) * 100:.2f}%
+                Real probability: {(1-prob_fake)*100:.2f}%
             </p>
         </div>""", unsafe_allow_html=True)
 
@@ -737,7 +616,6 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     st.divider()
-
     section("Model")
     model_path = st.text_input(
         "Path to best_model.pth",
@@ -746,23 +624,18 @@ with st.sidebar:
     )
 
     st.divider()
-
     section("Settings")
     threshold = st.slider(
-        "Decision Threshold",
-        min_value=0.1, max_value=0.9,
-        value=0.5, step=0.05,
-        help="Probability above this = FAKE"
+        "Decision Threshold", min_value=0.1, max_value=0.9,
+        value=0.5, step=0.05, help="Probability above this = FAKE"
     )
     frame_skip = st.slider(
-        "Video Frame Skip",
-        min_value=5, max_value=60,
+        "Video Frame Skip", min_value=5, max_value=60,
         value=30, step=5,
-        help="Every Nth frame analysed. 30=fast (1fps@30fps), 10=thorough"
+        help="Every Nth frame analysed. 30=fast, 10=thorough"
     )
 
     st.divider()
-
     section("Model Info")
     st.markdown("""
     <div style='font-family:Space Mono,monospace;font-size:0.72rem;
@@ -780,7 +653,7 @@ with st.sidebar:
 
 
 # ================================================================
-# MAIN CONTENT
+# STARTUP — load model once, stays cached for all users/reruns
 # ================================================================
 st.markdown("""
 <div style='padding: 2rem 0 1.5rem'>
@@ -789,12 +662,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ================================================================
-# STARTUP — load model immediately, show spinner in UI
-# ================================================================
-_model_ok  = False
-_model     = None
-_device    = None
+# FIX: initialise flags before the try/except block so that a partial
+# failure (e.g. load_model raises after cache miss) never leaves
+# _model/_device in an indeterminate state across reruns.
+_model_ok = False
+_model    = None
+_device   = None
 
 if not os.path.exists(model_path):
     st.markdown(f"""
@@ -804,9 +677,10 @@ if not os.path.exists(model_path):
         ⚠ Model not found at <b>{model_path}</b> — enter correct path in sidebar
     </div>""", unsafe_allow_html=True)
 else:
-    with st.spinner("⚡ Loading DeepShield model into memory..."):
+    with st.spinner("⚡ Loading model into memory... (one-time, ~30s on CPU)"):
         try:
             _model, _device = load_model(model_path)
+            # FIX: only set True AFTER both assignments succeed
             _model_ok = True
         except Exception as _e:
             st.error(f"Failed to load model: {_e}")
@@ -818,17 +692,15 @@ else:
                     font-family:Space Mono,monospace;font-size:0.78rem;color:#00e676'>
             ✓ Model ready &nbsp;·&nbsp; Device: <b>{_device.upper()}</b>
             &nbsp;·&nbsp; Threshold: {threshold}
-            &nbsp;·&nbsp; Upload an image or video to begin
+            &nbsp;·&nbsp; Upload image or video below
         </div>""", unsafe_allow_html=True)
 
-# RetinaFace — attempt silently, fallback to full frame if missing
-_rf_module, _rf_ready = None, False
-try:
-    _rf_module, _rf_ready = load_face_extractor()
-except Exception:
-    pass
+# RetinaFace — silent fallback if not installed
+_rf_module, _rf_ready = load_face_extractor()
 
-# Mode tabs
+# ================================================================
+# TABS
+# ================================================================
 tab_img, tab_vid = st.tabs(["🖼  Image", "🎬  Video"])
 
 
@@ -878,8 +750,8 @@ with tab_img:
         if "img_result" in st.session_state:
             r = st.session_state["img_result"]
 
-            det_status = "RetinaFace crop" if r.get("face_detected") else "Full frame (no face detected)"
             det_color  = "#00b4d8" if r.get("face_detected") else "#f59e0b"
+            det_status = "RetinaFace crop" if r.get("face_detected") else "Full frame (no face detected)"
             st.markdown(f"""
             <div style='font-family:Space Mono,monospace;font-size:0.72rem;
                         color:{det_color};margin-bottom:1rem'>
@@ -890,12 +762,9 @@ with tab_img:
             st.markdown("<br>", unsafe_allow_html=True)
 
             mc1, mc2, mc3 = st.columns(3)
-            with mc1:
-                render_metric("Fake Prob",  f"{r['prob_fake'] * 100:.1f}%")
-            with mc2:
-                render_metric("Real Prob",  f"{(1 - r['prob_fake']) * 100:.1f}%")
-            with mc3:
-                render_metric("Threshold",  f"{threshold * 100:.0f}%")
+            with mc1: render_metric("Fake Prob",  f"{r['prob_fake']*100:.1f}%")
+            with mc2: render_metric("Real Prob",  f"{(1-r['prob_fake'])*100:.1f}%")
+            with mc3: render_metric("Threshold",  f"{threshold*100:.0f}%")
 
             section("Grad-CAM Attention Map")
             g1, g2 = st.columns(2)
@@ -906,9 +775,9 @@ with tab_img:
 
             section("Export")
             result_entry = [{
-                "frame_no":    1,
-                "label":       r["label"],
-                "prob_fake":   r["prob_fake"],
+                "frame_no":     1,
+                "label":        r["label"],
+                "prob_fake":    r["prob_fake"],
                 "original_rgb": r["original"],
                 "overlay_rgb":  r["overlay"],
             }]
@@ -949,10 +818,8 @@ with tab_vid:
                 if not _model_ok:
                     st.error("Model not loaded — check path in sidebar.")
                     st.stop()
-                model, device       = _model, _device
-                rf_module, rf_ready = _rf_module, _rf_ready
 
-                # Save to temp file
+                # Save upload to temp file
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
                     tmp.write(vid_file.read())
                     tmp_path = tmp.name
@@ -960,12 +827,9 @@ with tab_vid:
                 results   = []
                 progress  = st.progress(0, text="Reading video...")
                 status    = st.empty()
-                all_probs = []
 
                 cap          = cv2.VideoCapture(tmp_path)
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-                # ── Video loop ────────────────────────────────
                 frames_to_process = max(total_frames // frame_skip, 1)
 
                 for i in range(frames_to_process):
@@ -978,6 +842,7 @@ with tab_vid:
                     pct      = int((i + 1) / frames_to_process * 100)
                     progress.progress(pct, text=f"Frame {frame_no}/{total_frames}")
 
+                    # Resize for speed
                     frame_bgr = cv2.resize(frame_bgr, (640, 360))
                     frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
                     frame_rgb = np.ascontiguousarray(frame_rgb)
@@ -987,58 +852,35 @@ with tab_vid:
                     best_prob    = 0.0
                     face_summary = ""
 
-                    if rf_ready and rf_module is not None:
+                    # Try RetinaFace
+                    if _rf_ready and _rf_module is not None:
                         try:
                             img_bgr_rf = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-                            faces      = rf_module.detect_faces(img_bgr_rf)
-
-                            if isinstance(faces, dict) and len(faces) > 0:
+                            faces      = _rf_module.detect_faces(img_bgr_rf)
+                            if isinstance(faces, dict) and faces:
                                 for fid, face_val in faces.items():
                                     x1, y1, x2, y2 = map(int, face_val["facial_area"])
                                     face_crop = frame_rgb[y1:y2, x1:x2]
                                     if face_crop.size == 0:
                                         continue
-
-                                    fc = cv2.resize(face_crop, (299, 299))
-                                    fc = fc.astype(np.float32) / 255.0
-                                    fc = (fc - np.array([0.485, 0.456, 0.406])) /                                          np.array([0.229, 0.224, 0.225])
-                                    tensor = (
-                                        torch.from_numpy(np.ascontiguousarray(fc))
-                                        .permute(2, 0, 1).unsqueeze(0).float().to(device)
-                                    )
-                                    with torch.no_grad():
-                                        out  = model(tensor)
-                                        prob = torch.sigmoid(out).item()
-
+                                    prob = infer_frame(_model, _device, face_crop)
                                     face_probs.append(prob)
-                                    all_probs.append(prob)
-
                                     if prob > best_prob:
                                         best_prob    = prob
                                         best_overlay = cv2.resize(face_crop, (299, 299))
-
-                                    face_summary += f"{fid}:{prob * 100:.0f}% "
+                                    face_summary += f"{fid}:{prob*100:.0f}% "
                         except Exception:
                             pass
 
-                    # Fallback — no faces found
+                    # Fallback — full frame
                     if not face_probs:
-                        fc   = cv2.resize(frame_rgb, (299, 299))
-                        fc_n = fc.astype(np.float32) / 255.0
-                        fc_n = (fc_n - np.array([0.485, 0.456, 0.406])) /                                np.array([0.229, 0.224, 0.225])
-                        tensor = (
-                            torch.from_numpy(np.ascontiguousarray(fc_n))
-                            .permute(2, 0, 1).unsqueeze(0).float().to(device)
-                        )
-                        with torch.no_grad():
-                            prob = torch.sigmoid(model(tensor)).item()
+                        prob = infer_frame(_model, _device, frame_rgb)
                         face_probs.append(prob)
-                        all_probs.append(prob)
                         best_prob    = prob
                         best_overlay = cv2.resize(frame_rgb, (299, 299))
-                        face_summary = f"full_frame:{prob * 100:.0f}%"
+                        face_summary = f"full_frame:{prob*100:.0f}%"
 
-                    frame_avg = np.mean(face_probs)
+                    frame_avg = float(np.mean(face_probs))
                     label     = "FAKE" if frame_avg >= threshold else "REAL"
                     conf      = frame_avg if label == "FAKE" else 1 - frame_avg
 
@@ -1053,14 +895,13 @@ with tab_vid:
                         "n_faces":      len(face_probs),
                     })
 
-                    col = "#ff4444" if label == "FAKE" else "#00e676"
+                    col_color = "#ff4444" if label == "FAKE" else "#00e676"
                     status.markdown(
                         f"<span style='font-family:Space Mono,monospace;"
                         f"font-size:0.78rem;color:#9ca3af'>"
                         f"Frame {frame_no} | {len(face_probs)} face(s) | "
-                        f"<b style='color:{col}'>{label}</b> "
-                        f"{conf * 100:.1f}% | {face_summary}"
-                        f"</span>",
+                        f"<b style='color:{col_color}'>{label}</b> "
+                        f"{conf*100:.1f}% | {face_summary}</span>",
                         unsafe_allow_html=True
                     )
 
@@ -1087,8 +928,8 @@ with tab_vid:
                 fakes    = [r for r in results if r["label"] == "FAKE"]
                 reals    = [r for r in results if r["label"] == "REAL"]
                 fake_pct = 100 * len(fakes) / len(results)
-                avg_prob = np.mean([r["prob_fake"] for r in results])
-                max_prob = np.max([r["prob_fake"]  for r in results])
+                avg_prob = float(np.mean([r["prob_fake"] for r in results]))
+                max_prob = float(np.max([r["prob_fake"]  for r in results]))
 
                 verdict = "FAKE" if avg_prob >= threshold else "REAL"
                 conf_v  = avg_prob if verdict == "FAKE" else 1 - avg_prob
@@ -1099,13 +940,13 @@ with tab_vid:
                 m1, m2, m3, m4, m5 = st.columns(5)
                 with m1: render_metric("Frames",      str(len(results)))
                 with m2: render_metric("Fake frames", f"{fake_pct:.1f}%")
-                with m3: render_metric("Avg prob",    f"{avg_prob * 100:.1f}%")
-                with m4: render_metric("Max prob",    f"{max_prob * 100:.1f}%")
+                with m3: render_metric("Avg prob",    f"{avg_prob*100:.1f}%")
+                with m4: render_metric("Max prob",    f"{max_prob*100:.1f}%")
                 with m5: render_metric(
                     "Verdict by",
-                    "any face >85%" if max_prob >= 0.85
+                    "any >85%" if max_prob >= 0.85
                     else ">20% frames" if fake_pct >= 20
-                    else "avg >40%"
+                    else "avg prob"
                 )
 
                 section("Frame-by-Frame Timeline")
@@ -1117,9 +958,9 @@ with tab_vid:
                 cols = ["#ff4444" if p >= 50 else "#00e676" for p in pb]
                 ax.bar(fn, pb, color=cols,
                        width=max(fn) / max(len(fn), 1) * 0.8)
-                ax.axhline(threshold * 100, color="white",
-                           ls="--", lw=1, alpha=0.4,
-                           label=f"Threshold {threshold * 100:.0f}%")
+                ax.axhline(threshold * 100, color="white", ls="--",
+                           lw=1, alpha=0.4,
+                           label=f"Threshold {threshold*100:.0f}%")
                 ax.set_xlabel("Frame number", color="#9ca3af", fontsize=8)
                 ax.set_ylabel("Fake %",       color="#9ca3af", fontsize=8)
                 ax.tick_params(colors="#9ca3af", labelsize=7)
@@ -1137,22 +978,22 @@ with tab_vid:
                     c    = "#ff4444" if r["label"] == "FAKE" else "#00e676"
                     nf   = r.get("n_faces", 1)
                     summ = r.get("face_summary", "")
+                    row_class = "fake" if r["label"] == "FAKE" else "real"
                     st.markdown(
-                        f"<div class='frame-row-{'fake' if r['label'] == 'FAKE' else 'real'}'>"
+                        f"<div class='frame-row-{row_class}'>"
                         f"Frame {r['frame_no']:>5} &nbsp;·&nbsp; "
                         f"{nf} face(s) &nbsp;·&nbsp; "
                         f"<b style='color:{c}'>{r['label']}</b>"
-                        f" &nbsp;·&nbsp; {r['prob_fake'] * 100:.1f}% fake"
+                        f" &nbsp;·&nbsp; {r['prob_fake']*100:.1f}% fake"
                         f"{'&nbsp; | &nbsp;' + summ if summ else ''}"
                         f"</div>",
                         unsafe_allow_html=True
                     )
 
-                section("Sample Grad-CAM Frames")
+                section("Sample Frames")
                 top_fake = sorted(fakes, key=lambda x: x["prob_fake"], reverse=True)[:2]
                 top_real = sorted(reals, key=lambda x: x["prob_fake"])[:2]
                 samples  = top_fake + top_real
-
                 if samples:
                     gcols = st.columns(len(samples))
                     for col, r in zip(gcols, samples):
@@ -1164,7 +1005,7 @@ with tab_vid:
                                 f"font-family:Space Mono,monospace;"
                                 f"font-size:0.7rem;color:{c}'>"
                                 f"Frame {r['frame_no']}<br>"
-                                f"{r['label']} {r['prob_fake'] * 100:.1f}%</p>",
+                                f"{r['label']} {r['prob_fake']*100:.1f}%</p>",
                                 unsafe_allow_html=True
                             )
 
@@ -1176,7 +1017,6 @@ with tab_vid:
                     file_name=f"deepshield_{vr['name'].split('.')[0]}.pdf",
                     mime="application/pdf"
                 )
-
         else:
             st.markdown("""
             <div style='text-align:center;padding:4rem 2rem;color:#2a2d4a;
