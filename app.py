@@ -944,14 +944,13 @@ with tab_vid:
     ) as tmp:
                         tmp.write(vid_file.read())
                         tmp_path = tmp.name
+    results  = []
+    progress = st.progress(0, text="Reading video...")
+    status   = st.empty()
 
-                    results  = []
-                    progress = st.progress(0, text="Reading video...")
-                    status   = st.empty()
-
-                    cap          = cv2.VideoCapture(tmp_path)
-                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                    frame_no     = 0
+    cap          = cv2.VideoCapture(tmp_path)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    frame_no     = 0
 
                     # ── Video loop — matches working inference script ──
                     frames_to_process = total_frames // frame_skip
